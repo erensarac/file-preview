@@ -9,7 +9,7 @@ import "server-only";
  * to disk and nothing is persisted.
  */
 
-import { getFormat, type FormatId } from "../formats";
+import { FORMATS, getFormat, type FormatId } from "../formats";
 import {
   MAX_PREVIEW_ROWS,
   type Preview,
@@ -18,6 +18,24 @@ import {
 
 /** Column cap per sheet, so one pathological file can't produce a 10k-wide table. */
 const MAX_PREVIEW_COLUMNS = 200;
+
+/**
+ * Budgets on what a parse is allowed to *produce*.
+ *
+ * `maxBytes` in the registry only bounds the compressed upload, and these are
+ * zip archives: a small file can legitimately expand to an enormous grid, and a
+ * hostile one is built to. Per-sheet caps alone don't help, because a workbook
+ * can carry hundreds of sheets — so the cell budget is spent across the whole
+ * workbook, not reset per sheet.
+ *
+ * This bounds the response we build and send. It does not bound the library's
+ * own peak memory while unzipping, which stays exposed to a decompression bomb;
+ * that needs a limit at the request layer.
+ */
+const MAX_PREVIEW_CELLS = 100_000;
+const MAX_PREVIEW_SHEETS = 50;
+/** Word documents can expand the same way; DOMPurify repairs the cut. */
+const MAX_PREVIEW_HTML_BYTES = 2 * 1024 * 1024;
 
 /**
  * exceljs ships `declare interface Buffer extends ArrayBuffer {}` at global
@@ -60,7 +78,17 @@ const parseXlsx: ServerParser = async (bytes, notices) => {
   // Cast per the Buffer note above; exceljs reads Uint8Array fine at runtime.
   await workbook.xlsx.load(bytes as never);
 
-  const sheets = workbook.worksheets.map((worksheet) => {
+  const worksheets = workbook.worksheets.slice(0, MAX_PREVIEW_SHEETS);
+  if (workbook.worksheets.length > worksheets.length) {
+    notices.push(
+      `This workbook has ${workbook.worksheets.length} sheets; showing the first ${worksheets.length}.`,
+    );
+  }
+
+  let cellBudget = MAX_PREVIEW_CELLS;
+  let budgetExhausted = false;
+
+  const sheets = worksheets.map((worksheet) => {
     const columnCount = Math.min(worksheet.columnCount, MAX_PREVIEW_COLUMNS);
     if (worksheet.columnCount > columnCount) {
       notices.push(
@@ -74,11 +102,16 @@ const parseXlsx: ServerParser = async (bytes, notices) => {
     worksheet.eachRow({ includeEmpty: true }, (row) => {
       totalRows += 1;
       if (rows.length >= MAX_PREVIEW_ROWS) return;
+      if (cellBudget < columnCount) {
+        budgetExhausted = true;
+        return;
+      }
 
       const cells: string[] = [];
       for (let column = 1; column <= columnCount; column += 1) {
         cells.push(cellToString(row.getCell(column).value));
       }
+      cellBudget -= columnCount;
       // Ragged rows render fine and keep wide-but-sparse sheets readable.
       while (cells.length > 0 && cells[cells.length - 1] === "") cells.pop();
       rows.push(cells);
@@ -92,6 +125,12 @@ const parseXlsx: ServerParser = async (bytes, notices) => {
 
     return { name: worksheet.name, rows, totalRows };
   });
+
+  if (budgetExhausted) {
+    notices.push(
+      `Preview truncated at ${MAX_PREVIEW_CELLS.toLocaleString()} cells.`,
+    );
+  }
 
   if (sheets.length === 0) {
     throw new Error("This workbook has no sheets.");
@@ -124,13 +163,34 @@ const parseDocx: ServerParser = async (bytes, notices) => {
     throw new Error("This document appears to be empty.");
   }
 
-  return { kind: "html", html: DOMPurify.sanitize(value) };
+  let html = value;
+  if (html.length > MAX_PREVIEW_HTML_BYTES) {
+    // Cutting mid-tag is fine: DOMPurify parses and re-serializes, so the
+    // truncated markup comes back balanced.
+    html = html.slice(0, MAX_PREVIEW_HTML_BYTES);
+    notices.push("Document is very large; the preview has been truncated.");
+  }
+
+  return { kind: "html", html: DOMPurify.sanitize(html) };
 };
 
 const PARSERS: Partial<Record<FormatId, ServerParser>> = {
   xlsx: parseXlsx,
   docx: parseDocx,
 };
+
+// Mirrors the assertion in the client adapter: a format whose runtime and
+// parser disagree otherwise surfaces as a nonsensical error at the far end.
+if (process.env.NODE_ENV !== "production") {
+  const missing = FORMATS.filter(
+    (f) => f.runtime === "server" && !(f.id in PARSERS),
+  ).map((f) => f.id);
+  if (missing.length > 0) {
+    throw new Error(
+      `Formats declared runtime: "server" with no server parser: ${missing.join(", ")}`,
+    );
+  }
+}
 
 export function hasServerParser(id: FormatId): boolean {
   return id in PARSERS;

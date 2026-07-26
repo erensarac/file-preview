@@ -147,9 +147,12 @@ export function getFormat(id: FormatId): FormatSpec {
 }
 
 export function extensionOf(filename: string): string {
-  const dot = filename.lastIndexOf(".");
-  if (dot < 1) return "";
-  return filename.slice(dot + 1).toLowerCase();
+  const base = filename.slice(filename.lastIndexOf("/") + 1);
+  const dot = base.lastIndexOf(".");
+  if (dot < 0) return "";
+  // A leading dot means the rest *is* the extension (`.env` → `env`), rather
+  // than the file being extensionless.
+  return base.slice(dot + 1).toLowerCase();
 }
 
 /**

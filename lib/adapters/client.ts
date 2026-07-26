@@ -7,7 +7,7 @@
  * versa.
  */
 
-import { extensionOf, getFormat, type FormatId } from "../formats";
+import { extensionOf, FORMATS, getFormat, type FormatId } from "../formats";
 import {
   MAX_PREVIEW_ROWS,
   type Preview,
@@ -95,6 +95,20 @@ const PARSERS: Partial<Record<FormatId, ClientParser>> = {
   json: parseJson,
   text: parseText,
 };
+
+// A format whose runtime and parser disagree fails confusingly at the far end —
+// the client hands it to the server action, which replies that it should have
+// been parsed in the browser. Catch the mismatch at module load instead.
+if (process.env.NODE_ENV !== "production") {
+  const missing = FORMATS.filter(
+    (f) => f.runtime === "client" && !(f.id in PARSERS),
+  ).map((f) => f.id);
+  if (missing.length > 0) {
+    throw new Error(
+      `Formats declared runtime: "client" with no browser parser: ${missing.join(", ")}`,
+    );
+  }
+}
 
 export function hasClientParser(id: FormatId): boolean {
   return id in PARSERS;

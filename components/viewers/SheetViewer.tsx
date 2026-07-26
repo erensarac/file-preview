@@ -26,7 +26,7 @@ function columnLabel(index: number): string {
 export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
   const [active, setActive] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
-  const [window, setWindow] = useState({ start: 0, end: 60 });
+  const [rowWindow, setRowWindow] = useState({ start: 0, end: 60 });
 
   const sheet = sheets[Math.min(active, sheets.length - 1)]!;
   const columnCount = sheet.rows.reduce(
@@ -47,12 +47,22 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
       Math.floor(element.scrollTop / ROW_HEIGHT) - OVERSCAN,
     );
     const visible = Math.ceil(element.clientHeight / ROW_HEIGHT);
-    setWindow({ start, end: start + visible + OVERSCAN * 2 });
+    setRowWindow({ start, end: start + visible + OVERSCAN * 2 });
   }, []);
 
   useEffect(() => {
     recompute();
   }, [recompute, active]);
+
+  // Resizing changes how many rows fit; without this the window keeps the
+  // height it was first measured at and a taller viewport shows blank space.
+  useEffect(() => {
+    const element = scroller.current;
+    if (!element) return;
+    const observer = new ResizeObserver(recompute);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [recompute]);
 
   // Switching sheets should start at the top rather than inherit the previous
   // sheet's scroll position.
@@ -60,8 +70,8 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
     scroller.current?.scrollTo({ top: 0 });
   }, [active]);
 
-  const start = Math.min(window.start, Math.max(0, sheet.rows.length - 1));
-  const end = Math.min(window.end, sheet.rows.length);
+  const start = Math.min(rowWindow.start, Math.max(0, sheet.rows.length - 1));
+  const end = Math.min(rowWindow.end, sheet.rows.length);
   const visibleRows = sheet.rows.slice(start, end);
 
   return (

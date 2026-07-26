@@ -1,0 +1,33 @@
+{
+  "name": "file",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dompurify": "^3.4.12",
+    "exceljs": "^4.4.0",
+    "isomorphic-dompurify": "^3.19.0",
+    "mammoth": "^1.12.0",
+    "marked": "^18.0.7",
+    "next": "^16.2.12",
+    "papaparse": "^5.5.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^26.1.1",
+    "@types/papaparse": "^5.3.16",
+    "@types/react": "^19.2.8",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.9.3"
+  }
+}

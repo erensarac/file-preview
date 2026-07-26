@@ -9,6 +9,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# This job only reads the checkout. Without this block it would inherit the
+# repository default, which on many repos hands a write-scoped token to every
+# step — including `npm ci` running third-party install scripts.
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest

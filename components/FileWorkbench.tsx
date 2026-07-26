@@ -22,21 +22,37 @@ export default function FileWorkbench() {
   const [document, setDocument] = useState<PreviewDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Bumped on every successful open and used as the pane's key, so viewer state
+  // (the selected sheet, the scroll window) starts fresh per file instead of
+  // being inherited from the file before it.
+  const [openId, setOpenId] = useState(0);
 
   const open = useCallback(async (file: File) => {
     setBusy(true);
     setError(null);
 
+    // A failed open must not leave the previous file on screen, or the error
+    // sits above a header naming a different document.
+    const fail = (message: string) => {
+      setDocument(null);
+      setError(message);
+    };
+
+    const succeed = (opened: PreviewDocument) => {
+      setDocument(opened);
+      setOpenId((id) => id + 1);
+    };
+
     try {
       const spec = detectFormat(file.name, file.type);
 
       if (!spec) {
-        setError(`We can't open ${file.name} yet.`);
+        fail(`We can't open ${file.name} yet.`);
         return;
       }
 
       if (spec.runtime === "client" && hasClientParser(spec.id)) {
-        setDocument(await parseInBrowser(file, spec.id));
+        succeed(await parseInBrowser(file, spec.id));
         return;
       }
 
@@ -45,12 +61,12 @@ export default function FileWorkbench() {
       const result = await previewFile(formData);
 
       if (result.ok) {
-        setDocument(result.document);
+        succeed(result.document);
       } else {
-        setError(result.error);
+        fail(result.error);
       }
     } catch (cause) {
-      setError(
+      fail(
         cause instanceof Error
           ? cause.message
           : "Something went wrong opening that file.",
@@ -75,6 +91,7 @@ export default function FileWorkbench() {
 
       {document && (
         <PreviewPane
+          key={openId}
           document={document}
           onClose={() => {
             setDocument(null);

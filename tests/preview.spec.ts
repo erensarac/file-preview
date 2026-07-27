@@ -183,7 +183,11 @@ test.describe("column widths", () => {
 
   test("stay fixed while scrolling", async ({ page }) => {
     await open(page, "wide.xlsx");
-    await expect(page.locator("table td").first()).toBeVisible();
+    // 3 MB uploaded, parsed and rendered — comfortably past the default
+    // 5s expect timeout when the suite runs its workers in parallel.
+    await expect(page.locator("table td").first()).toBeVisible({
+      timeout: 30_000,
+    });
 
     const before = await Promise.all([0, 1, 2].map((c) => widthOf(page, c)));
 
@@ -247,7 +251,10 @@ test.describe("column widths", () => {
 
 test("a sheet at the preview caps stays responsive", async ({ page }) => {
   await open(page, "wide.xlsx");
-  await expect(page.locator("table td").first()).toBeVisible();
+  // As above: the 3 MB fixture needs more than the default expect timeout.
+  await expect(page.locator("table td").first()).toBeVisible({
+    timeout: 30_000,
+  });
 
   // Rendering every cell of a capped sheet would be ~400k nodes and roughly
   // 30s to paint; only the visible window may be mounted.

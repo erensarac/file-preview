@@ -14,7 +14,7 @@ function Viewer({ preview }: { preview: PreviewDocument["preview"] }) {
     case "html":
       return <HtmlViewer html={preview.html} />;
     case "text":
-      return <TextViewer text={preview.text} />;
+      return <TextViewer text={preview.text} language={preview.language} />;
   }
 }
 

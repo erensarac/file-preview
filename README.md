@@ -32,12 +32,37 @@ produce zero network requests, and opening an XLSX must produce exactly one.
 
 ```
 lib/formats.ts          Format registry + detection. No parsing deps — imported by both sides.
+lib/languages.ts        Extension → syntax grammar, one lazy import per grammar.
+lib/highlight.ts        Shiki highlighter, built on first use and reused.
 lib/preview.ts          The Preview union every adapter returns and every viewer renders.
 lib/adapters/client.ts  Browser parsers (papaparse, marked, JSON).
 lib/adapters/server.ts  Server parsers (exceljs, mammoth). `server-only`.
 app/actions/preview.ts  The upload API, as a server action. Re-validates everything.
 components/             DropZone, PreviewPane, and one viewer per Preview kind.
 ```
+
+## Syntax highlighting
+
+Source files are coloured with Shiki, in the browser — a file is not uploaded
+just to be highlighted. Around 90 extensions map to a grammar in
+`lib/languages.ts`; anything without one still opens, plain.
+
+Grammars are never bundled up front. Measured on a production build:
+
+| | JS transferred |
+| --- | --- |
+| Initial page load | 239 KB |
+| First highlighted file (core + engine + one grammar) | +134 KB |
+| A second language after that (grammar only) | +172 KB |
+| A CSV (no highlighting) | +19 KB |
+
+Highlighting is a progressive enhancement: plain text paints first and is
+replaced when the grammar arrives, so a file stays readable even if it never
+does. Files over 300 KB are left plain.
+
+Shiki's JavaScript regex engine is used rather than the Oniguruma one, which
+would mean shipping a ~500 KB WebAssembly binary to colour a SQL file. It runs
+in forgiving mode, costing some fidelity in corners of a few grammars.
 
 ## Adding a format
 

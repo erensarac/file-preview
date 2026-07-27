@@ -48,6 +48,72 @@ body {
 }
 
 /*
+ * Highlighted source, as produced by Shiki.
+ *
+ * Shiki emits both palettes at once as CSS variables, so the theme switch is a
+ * variable swap rather than a re-highlight. Line numbers are a CSS counter over
+ * the `.line` spans it already emits — no extra markup, and they stay correct
+ * when a line wraps because they are attached to the line, not to a table row.
+ */
+.code-block pre {
+  counter-reset: line;
+  overflow-x: auto;
+  padding: 0.25rem 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  background: transparent !important;
+}
+.code-block code {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  /*
+   * Shiki separates its `.line` spans with real newlines. Those spans are
+   * block-level here, so under `white-space: pre` each newline would also
+   * break, doubling the spacing. Collapsing whitespace at this level discards
+   * them; the lines themselves re-enable `pre` for their own content.
+   */
+  white-space: normal;
+}
+.code-block .line {
+  display: block;
+  white-space: pre;
+  padding-right: 1.5rem;
+}
+.code-block .line::before {
+  counter-increment: line;
+  content: counter(line);
+  display: inline-block;
+  /* Kept tight: the gutter is chrome, and a wide one reads as the content
+     being inset from the panel edge. */
+  width: 2.25rem;
+  margin-right: 0.75rem;
+  padding-right: 0.625rem;
+  border-right: 1px solid var(--color-line);
+  color: var(--color-muted);
+  text-align: right;
+  user-select: none;
+  position: sticky;
+  left: 0;
+  background: var(--color-surface);
+}
+/* An empty line still needs to occupy one. */
+.code-block .line:empty::after {
+  content: " ";
+}
+
+.code-block,
+.code-block span {
+  color: var(--shiki-light);
+}
+@media (prefers-color-scheme: dark) {
+  .code-block,
+  .code-block span {
+    color: var(--shiki-dark);
+  }
+}
+
+/*
  * Styling for parser-produced HTML (Markdown and Word), which arrives as a
  * sanitized string and therefore can't carry utility classes of its own.
  */

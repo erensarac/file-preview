@@ -77,6 +77,38 @@ export async function buildFixtures(): Promise<void> {
   // A dotfile: the whole name after the leading dot is the extension.
   writeFileSync(at(".env"), "TOKEN=not-a-real-secret\nMODE=preview\n");
 
+  // Two languages with distinct grammars, each containing a keyword, a string
+  // and a comment — enough for highlighting to be visible rather than assumed.
+  writeFileSync(
+    at("query.sql"),
+    [
+      "-- monthly totals",
+      "SELECT region, SUM(revenue) AS total",
+      "FROM sales",
+      "WHERE region = 'Marmara'",
+      "GROUP BY region;",
+    ].join("\n"),
+  );
+
+  writeFileSync(
+    at("widget.tsx"),
+    [
+      "// a small component",
+      'import { useState } from "react";',
+      "",
+      "export function Widget({ label }: { label: string }) {",
+      "  const [count, setCount] = useState(0);",
+      "  return <button onClick={() => setCount(count + 1)}>{label}</button>;",
+      "}",
+    ].join("\n"),
+  );
+
+  // No grammar is registered for .log, so it must still open — just uncoloured.
+  writeFileSync(
+    at("server.log"),
+    "2026-07-27 09:00:01 INFO started\n2026-07-27 09:00:02 WARN slow query\n",
+  );
+
   const workbook = new ExcelJS.Workbook();
   const first = workbook.addWorksheet("Q1");
   first.addRow(["Month", "Revenue"]);

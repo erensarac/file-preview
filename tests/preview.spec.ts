@@ -174,6 +174,77 @@ test("sheet selection resets when a new file is opened", async ({ page }) => {
   );
 });
 
+test.describe("column widths", () => {
+  const widthOf = (page: Page, column: number) =>
+    page
+      .locator("thead th")
+      .nth(column + 1) // +1 for the row-number gutter
+      .evaluate((cell) => cell.getBoundingClientRect().width);
+
+  test("stay fixed while scrolling", async ({ page }) => {
+    await open(page, "wide.xlsx");
+    await expect(page.locator("table td").first()).toBeVisible();
+
+    const before = await Promise.all([0, 1, 2].map((c) => widthOf(page, c)));
+
+    // The viewer only mounts the rows in view, so an auto-layout table would
+    // resize its columns as scrolling swapped the mounted content.
+    await page
+      .locator("table")
+      .locator("..")
+      .evaluate((element) => {
+        element.scrollTop = 300 * 33;
+      });
+    await expect(page.getByText("r300c0")).toBeVisible();
+
+    const after = await Promise.all([0, 1, 2].map((c) => widthOf(page, c)));
+    expect(after).toEqual(before);
+  });
+
+  test("resize by dragging the header edge", async ({ page }) => {
+    await open(page, "report.xlsx");
+    await expect(page.locator("table td").first()).toBeVisible();
+
+    const before = await widthOf(page, 0);
+    const handle = page.getByTestId("resize-0");
+    const box = (await handle.boundingBox())!;
+
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2, {
+      steps: 8,
+    });
+    await page.mouse.up();
+
+    expect(await widthOf(page, 0)).toBeGreaterThan(before + 100);
+    // Neighbours are unaffected — only the dragged column changes.
+    await expect(page.getByText("Revenue")).toBeVisible();
+  });
+
+  test("double-clicking the edge fits the column to its widest value", async ({
+    page,
+  }) => {
+    await open(page, "report.xlsx");
+    await expect(page.locator("table td").first()).toBeVisible();
+
+    const fitted = await widthOf(page, 0);
+
+    // Shrink it well below the content, then ask for the fit back.
+    const handle = page.getByTestId("resize-0");
+    const box = (await handle.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 - 200, box.y + box.height / 2, {
+      steps: 8,
+    });
+    await page.mouse.up();
+    expect(await widthOf(page, 0)).toBeLessThan(fitted);
+
+    await page.getByTestId("resize-0").dblclick();
+    expect(await widthOf(page, 0)).toBeCloseTo(fitted, 0);
+  });
+});
+
 test("a sheet at the preview caps stays responsive", async ({ page }) => {
   await open(page, "wide.xlsx");
   await expect(page.locator("table td").first()).toBeVisible();

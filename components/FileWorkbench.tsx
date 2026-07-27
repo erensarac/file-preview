@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 
 import { previewFile } from "@/app/actions/preview";
 import { hasClientParser, parseInBrowser } from "@/lib/adapters/client";
-import { detectFormat } from "@/lib/formats";
+import { detectFormat, formatBytes } from "@/lib/formats";
 import type { PreviewDocument } from "@/lib/preview";
 
 import DropZone from "./DropZone";
@@ -53,6 +53,18 @@ export default function FileWorkbench() {
 
       if (spec.runtime === "client" && hasClientParser(spec.id)) {
         succeed(await parseInBrowser(file, spec.id));
+        return;
+      }
+
+      // Checked here, before the upload is attempted, because an oversized body
+      // is rejected at the platform edge — the server action never runs, so its
+      // own size check can't produce a message the user would understand.
+      // The action still re-checks; this is about which error they see.
+      if (file.size > spec.maxBytes) {
+        fail(
+          `${spec.label} files are limited to ${formatBytes(spec.maxBytes)}. ` +
+            `This one is ${formatBytes(file.size)}.`,
+        );
         return;
       }
 

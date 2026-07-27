@@ -61,6 +61,13 @@ PDF, an image) needs a new `Preview` variant and viewer.
   since they can quote file contents.
 - Spreadsheets are capped at 2,000 rows and 200 columns per sheet for preview,
   with a notice when truncation happens.
+- Office formats are zip archives, so `lib/zip-guard.ts` reads the central
+  directory — the archive's own record of each entry's compressed and expanded
+  size — and refuses implausible expansion **before** a parser allocates
+  anything. Real fixtures peak around 9x; the limit is 200x.
+- `lib/concurrency.ts` caps concurrent parses per instance and sheds the excess
+  rather than queueing it. This protects one instance under load; it is not
+  rate limiting, which needs a shared store and belongs at the edge.
 
 ## Development
 

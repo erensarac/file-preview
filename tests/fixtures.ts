@@ -95,6 +95,21 @@ export async function buildFixtures(): Promise<void> {
   }
   await wide.xlsx.writeFile(at("wide.xlsx"));
 
+  // A decompression bomb wearing an .xlsx extension: 64 MB of zeros stores in
+  // a few tens of KB, so it declares an expansion ratio in the thousands. The
+  // guard has to refuse it on the declared sizes alone, without inflating it.
+  const bomb = new JSZip();
+  bomb.file("[Content_Types].xml", "<Types/>");
+  bomb.file("xl/bomb.bin", Buffer.alloc(64 * 1024 * 1024));
+  writeFileSync(
+    at("bomb.xlsx"),
+    await bomb.generateAsync({
+      type: "nodebuffer",
+      compression: "DEFLATE",
+      compressionOptions: { level: 9 },
+    }),
+  );
+
   await writeDocx(
     at("summary.docx"),
     paragraph("Quarterly Summary", "Heading1") +

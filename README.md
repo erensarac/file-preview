@@ -68,6 +68,12 @@ PDF, an image) needs a new `Preview` variant and viewer.
 - `lib/concurrency.ts` caps concurrent parses per instance and sheds the excess
   rather than queueing it. This protects one instance under load; it is not
   rate limiting, which needs a shared store and belongs at the edge.
+- Server-parsed formats are capped at 4 MB because the deployment rejects
+  larger request bodies at its edge, before any of this code runs. Raising a
+  cap past that ceiling **fails the build** rather than shipping a limit the
+  platform will silently override. Oversized files are caught in the browser so
+  the user gets our message instead of a bare 413 — the upload is never
+  attempted.
 
 ## Development
 

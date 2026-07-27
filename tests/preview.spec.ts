@@ -120,6 +120,27 @@ test("unsupported formats fail with a readable message", async ({ page }) => {
   await expect(errorBanner(page)).toContainText("can't open");
 });
 
+test("an oversized upload is refused without being sent", async ({ page }) => {
+  await page.goto("/");
+  const posts: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST") posts.push(request.url());
+  });
+
+  // Above the 4 MB server-format cap. The platform rejects bodies past its own
+  // limit before any of our code runs, so the only way the user sees our
+  // message is if the upload never leaves the browser.
+  await page.setInputFiles('input[type="file"]', {
+    name: "huge.xlsx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: Buffer.alloc(5 * 1024 * 1024),
+  });
+
+  await expect(errorBanner(page)).toContainText("limited to 4.0 MB");
+  expect(posts, "an oversized file must not be uploaded at all").toEqual([]);
+});
+
 test("a failed open clears the previous preview", async ({ page }) => {
   await open(page, "sales.csv");
   await expect(page.getByText("Marmara")).toBeVisible();

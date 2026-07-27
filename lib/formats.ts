@@ -43,6 +43,23 @@ export interface FormatSpec {
 
 const MB = 1024 * 1024;
 
+/**
+ * The deployment's request body ceiling.
+ *
+ * Serverless platforms cap how large a request body they will accept, and the
+ * rejection happens at the platform edge — before any of this code runs, so
+ * none of our error handling applies and the user sees a bare 413. Vercel's
+ * limit is 4.5 MB.
+ *
+ * A server-parsed format registered above this is therefore a limit we
+ * advertise but cannot honour. The assertion below the registry makes that
+ * impossible to do by accident; client-parsed formats are unaffected, since
+ * they are never uploaded.
+ */
+const PLATFORM_BODY_LIMIT = 4.5 * MB;
+/** Headroom for multipart framing around the file itself. */
+const BODY_FRAMING_ALLOWANCE = 0.5 * MB;
+
 export const FORMATS: readonly FormatSpec[] = [
   {
     id: "csv",
@@ -119,7 +136,7 @@ export const FORMATS: readonly FormatSpec[] = [
       "application/vnd.ms-excel.sheet.macroEnabled.12",
     ],
     runtime: "server",
-    maxBytes: 20 * MB,
+    maxBytes: 4 * MB,
   },
   {
     id: "docx",
@@ -129,7 +146,7 @@ export const FORMATS: readonly FormatSpec[] = [
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ],
     runtime: "server",
-    maxBytes: 20 * MB,
+    maxBytes: 4 * MB,
   },
 ] as const;
 
@@ -137,6 +154,19 @@ export const FORMATS: readonly FormatSpec[] = [
 export const MAX_UPLOAD_BYTES = FORMATS.filter(
   (f) => f.runtime === "server",
 ).reduce((max, f) => Math.max(max, f.maxBytes), 0);
+
+// Constant against constant, so this either always holds or always fails —
+// and it fails at build time rather than shipping a limit the platform will
+// override. Raising a server format's cap past what the deployment accepts is
+// the mistake this exists to catch.
+if (MAX_UPLOAD_BYTES > PLATFORM_BODY_LIMIT - BODY_FRAMING_ALLOWANCE) {
+  throw new Error(
+    `Server-parsed formats accept up to ${MAX_UPLOAD_BYTES} bytes, but the ` +
+      `deployment rejects request bodies over ${PLATFORM_BODY_LIMIT} bytes ` +
+      `before this code runs. Lower the format cap, or move the format to a ` +
+      `client runtime.`,
+  );
+}
 
 const BY_ID = new Map<FormatId, FormatSpec>(FORMATS.map((f) => [f.id, f]));
 

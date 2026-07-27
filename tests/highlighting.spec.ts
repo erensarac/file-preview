@@ -34,7 +34,9 @@ test("SQL is highlighted", async ({ page }) => {
   await page.goto("/");
   await page.setInputFiles('input[type="file"]', fixture("query.sql"));
 
-  await expect(page.locator(".code-block")).toBeVisible();
+  // The plain state renders through the same markup, so waiting on
+  // `.code-block` would not wait for colour — a styled span is the signal.
+  await expect(page.locator(".code-block span[style]").first()).toBeVisible();
   await expect(page.getByText("SELECT", { exact: false }).first()).toBeVisible();
 
   // A keyword, a string literal and a comment should not all render the same.
@@ -45,7 +47,7 @@ test("TSX is highlighted", async ({ page }) => {
   await page.goto("/");
   await page.setInputFiles('input[type="file"]', fixture("widget.tsx"));
 
-  await expect(page.locator(".code-block")).toBeVisible();
+  await expect(page.locator(".code-block span[style]").first()).toBeVisible();
   await expect(page.getByText("useState").first()).toBeVisible();
   expect(await paletteSize(page)).toBeGreaterThan(2);
 });
@@ -53,7 +55,7 @@ test("TSX is highlighted", async ({ page }) => {
 test("line numbers survive highlighting", async ({ page }) => {
   await page.goto("/");
   await page.setInputFiles('input[type="file"]', fixture("query.sql"));
-  await expect(page.locator(".code-block")).toBeVisible();
+  await expect(page.locator(".code-block span[style]").first()).toBeVisible();
 
   // Line numbers are a CSS counter on a pseudo-element. `content` computes to
   // the literal `counter(line)` rather than the resolved digit, so what's
@@ -74,13 +76,57 @@ test("line numbers survive highlighting", async ({ page }) => {
   expect(state.gutterWidth).toBeGreaterThan(0);
 });
 
+test("gaining colour does not move the text", async ({ page }) => {
+  /**
+   * The reported bug: highlighting arrived a moment after the file opened and
+   * the text visibly shifted and reindented, because the plain state and the
+   * highlighted state were different layouts.
+   *
+   * The plain state is captured by blocking the highlighter chunks, so it
+   * persists long enough to measure rather than depending on timing.
+   */
+  const positions = async (page: import("@playwright/test").Page) =>
+    page.evaluate(() =>
+      [...document.querySelectorAll(".code-block .line")]
+        .slice(0, 5)
+        .map((line) => {
+          const box = line.getBoundingClientRect();
+          return { x: Math.round(box.x), y: Math.round(box.y) };
+        }),
+    );
+
+  // Blocking has to happen *after* the app has loaded, and by URL pattern
+  // alone: the chunks are content-hashed, so there is no "shiki" in their
+  // names to match on. Everything requested from here is a lazy chunk.
+  await page.goto("/");
+  await page.route("**/*.js", (route) => route.abort());
+  await page.setInputFiles('input[type="file"]', fixture("query.sql"));
+  await expect(page.locator(".code-block .line").first()).toBeVisible();
+
+  // Prove the plain state really is plain, or the comparison below is
+  // colour-against-colour and passes without testing anything.
+  await expect(page.locator(".code-block span[style]")).toHaveCount(0);
+  const plain = await positions(page);
+  expect(plain).toHaveLength(5);
+
+  await page.unroute("**/*.js");
+  await page.goto("/");
+  await page.setInputFiles('input[type="file"]', fixture("query.sql"));
+  await expect(page.locator(".code-block span[style]").first()).toBeVisible();
+  const coloured = await positions(page);
+
+  expect(coloured).toEqual(plain);
+});
+
 test("a file with no grammar still opens, just uncoloured", async ({ page }) => {
   await page.goto("/");
   await page.setInputFiles('input[type="file"]', fixture("server.log"));
 
   await expect(page.getByText("WARN slow query")).toBeVisible();
-  await expect(page.locator("main [role=\"alert\"]")).toHaveCount(0);
-  await expect(page.locator(".code-block")).toHaveCount(0);
+  await expect(page.locator('main [role="alert"]')).toHaveCount(0);
+  // It renders through the same structure, just without any coloured spans.
+  await expect(page.locator(".code-block")).toBeVisible();
+  await expect(page.locator(".code-block span[style]")).toHaveCount(0);
 });
 
 test("highlighting does not execute markup in the source", async ({ page }) => {
@@ -93,7 +139,7 @@ test("highlighting does not execute markup in the source", async ({ page }) => {
     ),
   });
 
-  await expect(page.locator(".code-block")).toBeVisible();
+  await expect(page.locator(".code-block span[style]").first()).toBeVisible();
   // Shiki builds markup from parsed tokens, so source text is never markup.
   expect(await page.evaluate(() => "__pwned" in window)).toBe(false);
 });

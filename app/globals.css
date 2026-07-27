@@ -84,9 +84,11 @@ body {
   counter-increment: line;
   content: counter(line);
   display: inline-block;
-  width: 3rem;
-  margin-right: 1rem;
-  padding-right: 0.75rem;
+  /* Kept tight: the gutter is chrome, and a wide one reads as the content
+     being inset from the panel edge. */
+  width: 2.25rem;
+  margin-right: 0.75rem;
+  padding-right: 0.625rem;
   border-right: 1px solid var(--color-line);
   color: var(--color-muted);
   text-align: right;
@@ -94,6 +96,10 @@ body {
   position: sticky;
   left: 0;
   background: var(--color-surface);
+}
+/* An empty line still needs to occupy one. */
+.code-block .line:empty::after {
+  content: " ";
 }
 
 .code-block,

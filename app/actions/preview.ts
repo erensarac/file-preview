@@ -15,6 +15,14 @@
 import { detectFormat } from "@/lib/formats";
 import { hasServerParser, parseOnServer } from "@/lib/adapters/server";
 import type { PreviewResult } from "@/lib/preview";
+import { createBulkhead, TooBusyError } from "@/lib/concurrency";
+import { assertSafeArchive, ZipBombError } from "@/lib/zip-guard";
+
+/**
+ * Parsing is the memory-hungry part of this endpoint, and several large
+ * workbooks landing on one instance at once is how it runs out of memory.
+ */
+const runParse = createBulkhead(4);
 
 export async function previewFile(formData: FormData): Promise<PreviewResult> {
   const file = formData.get("file");
@@ -48,13 +56,36 @@ export async function previewFile(formData: FormData): Promise<PreviewResult> {
   }
 
   try {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const document = await parseOnServer(
-      { name: file.name, size: file.size, bytes },
-      spec.id,
-    );
+    const document = await runParse(async () => {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+
+      // Before the parser is allowed to allocate anything, check what the
+      // archive claims it will expand to.
+      assertSafeArchive(bytes);
+
+      return parseOnServer(
+        { name: file.name, size: file.size, bytes },
+        spec.id,
+      );
+    });
     return { ok: true, document };
   } catch (error) {
+    if (error instanceof TooBusyError) {
+      return {
+        ok: false,
+        error:
+          "Too many files are being converted right now. Try again shortly.",
+      };
+    }
+
+    if (error instanceof ZipBombError) {
+      console.warn(`Rejected ${spec.id} archive: ${error.message}`);
+      return {
+        ok: false,
+        error: `This ${spec.label} file expands to far more than its size suggests, so we didn't open it.`,
+      };
+    }
+
     // Parser errors can quote file contents, so log the detail and return a
     // short message instead of forwarding it to the browser verbatim.
     console.error(`Failed to preview ${spec.id} file`, error);

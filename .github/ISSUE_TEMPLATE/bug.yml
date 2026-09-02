@@ -1,0 +1,55 @@
+name: Bug report
+description: Something opens wrong, or does not open at all.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Please do not attach a file with anything private in it.** Almost
+        every bug here is specific to one file, so a sample is the most useful
+        thing you can give — but a spreadsheet or document usually carries
+        someone's real data. Reproduce it with a file you would be happy to
+        publish, or describe the shape instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: And what you expected instead.
+    validations:
+      required: true
+
+  - type: input
+    id: file
+    attributes:
+      label: File kind and size
+      description: >
+        The extension and roughly how big it is. Excel and Word are parsed on
+        the server and capped at 4 MB; everything else is read in your browser,
+        where the limits are different — so this usually narrows it down fast.
+      placeholder: "e.g. .xlsx, about 800 KB, 3 sheets"
+    validations:
+      required: true
+
+  - type: textarea
+    id: file-shape
+    attributes:
+      label: Anything unusual about the file
+      description: >
+        Optional, but often the whole answer. Merged cells, formulas, a pivot
+        table, a scanned PDF, a non-Latin script, a password.
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      placeholder: "e.g. Safari 18 on an iPhone, Firefox 130 on Linux"
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Console output
+      description: Anything red in the browser's developer console.
+      render: text

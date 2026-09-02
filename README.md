@@ -249,6 +249,10 @@ those live outside the cached directory, so the cache-hit path still runs
 
 Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4.
 
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the conventions that are not visible
+from the code: that fixtures are generated rather than committed, what a new
+format costs, and which constraints on the format registry the build enforces.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

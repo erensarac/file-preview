@@ -1,0 +1,35 @@
+name: Feature or format request
+description: A format that should open, or something a viewer should do.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: >
+        The situation rather than the solution. "I get sent .numbers files and
+        cannot open them on Windows" says more than "add .numbers support", and
+        sometimes the better answer is a different one.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of change is this
+      options:
+        - A format that should open
+        - Something a viewer should do
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: format-details
+    attributes:
+      label: If it is a format
+      description: >
+        The extension, and whether a parser for it can run in a browser. Formats
+        are read in your own tab wherever possible — that is the point of the
+        project — and only go to the server when the parser is too heavy to
+        ship. Knowing which this is decides most of the work.

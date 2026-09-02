@@ -102,13 +102,22 @@ body {
   content: " ";
 }
 
+/*
+ * Shiki emits both palettes on every token as custom properties. Selecting
+ * them here rather than committing to one at highlight time is what lets the
+ * theme switch be a variable swap instead of a re-highlight. The same rule
+ * covers highlighted Markdown code blocks, whose tokens are injected into the
+ * `<pre>` Markdown produced.
+ */
 .code-block,
-.code-block span {
+.code-block span,
+.rendered-doc pre code span {
   color: var(--shiki-light);
 }
 @media (prefers-color-scheme: dark) {
   .code-block,
-  .code-block span {
+  .code-block span,
+  .rendered-doc pre code span {
     color: var(--shiki-dark);
   }
 }

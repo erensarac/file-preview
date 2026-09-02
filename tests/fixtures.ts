@@ -123,6 +123,33 @@ export async function buildFixtures(): Promise<void> {
 
   writeFileSync(at("config.json"), '{"name":"file","nested":{"a":[1,2,3]}}');
 
+  // Fenced blocks in four flavours: a language named the way an extension is,
+  // one named the way a grammar is, one nobody has a grammar for, and one the
+  // author explicitly asked to leave alone.
+  writeFileSync(
+    at("guide.md"),
+    [
+      "# Guide",
+      "",
+      "```ts",
+      'const greeting: string = "hello";',
+      "```",
+      "",
+      "```sql",
+      "SELECT id FROM users WHERE active = true;",
+      "```",
+      "",
+      "```nosuchlanguage",
+      "this should stay plain",
+      "```",
+      "",
+      "```text",
+      "so should this",
+      "```",
+      "",
+    ].join("\n"),
+  );
+
   // A dotfile: the whole name after the leading dot is the extension.
   writeFileSync(at(".env"), "TOKEN=not-a-real-secret\nMODE=preview\n");
 

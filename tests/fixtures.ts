@@ -17,7 +17,11 @@ const paragraph = (text: string, style?: string) =>
   `<w:p>${style ? `<w:pPr><w:pStyle w:val="${style}"/></w:pPr>` : ""}` +
   `<w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
 
-async function writeDocx(path: string, paragraphs: string) {
+async function writeDocx(
+  path: string,
+  paragraphs: string,
+  hyperlinks: { id: string; target: string }[] = [],
+) {
   const zip = new JSZip();
   zip.file(
     "[Content_Types].xml",
@@ -37,12 +41,29 @@ async function writeDocx(path: string, paragraphs: string) {
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
 </Relationships>`,
     );
+  if (hyperlinks.length > 0) {
+    zip
+      .folder("word")!
+      .folder("_rels")!
+      .file(
+        "document.xml.rels",
+        `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+${hyperlinks
+  .map(
+    (link) =>
+      `<Relationship Id="${link.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${link.target}" TargetMode="External"/>`,
+  )
+  .join("\n")}
+</Relationships>`,
+      );
+  }
   zip
     .folder("word")!
     .file(
       "document.xml",
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>
 ${paragraphs}
 </w:body></w:document>`,
     );
@@ -122,6 +143,25 @@ export async function buildFixtures(): Promise<void> {
   );
 
   writeFileSync(at("config.json"), '{"name":"file","nested":{"a":[1,2,3]}}');
+
+  // Link and image targets of every shape, to pin which survive.
+  writeFileSync(
+    at("links.md"),
+    [
+      "# Links",
+      "",
+      "- [sibling](test.js)",
+      "- [nested](./docs/readme.md)",
+      "- [parent](../other.txt)",
+      "- [rooted](/setup.exe)",
+      "- [external](https://example.com/x)",
+      "- [mail](mailto:someone@example.com)",
+      "- [anchor](#links)",
+      "",
+      "![local picture](diagram.png)",
+      "",
+    ].join("\n"),
+  );
 
   // Fenced blocks in four flavours: a language named the way an extension is,
   // one named the way a grammar is, one nobody has a grammar for, and one the
@@ -231,6 +271,18 @@ export async function buildFixtures(): Promise<void> {
   // Right extension, wrong contents — must be rejected on the signature
   // rather than reaching pdf.js and failing as an opaque worker error.
   writeFileSync(at("not-really.pdf"), "just some text, not a PDF\n");
+
+  // Word carries hyperlinks as relationships, so a relative one has to be
+  // built through that machinery to exercise the same path a real file would.
+  await writeDocx(
+    at("doc-links.docx"),
+    `<w:p><w:hyperlink r:id="rel1"><w:r><w:t>local file</w:t></w:r></w:hyperlink></w:p>` +
+      `<w:p><w:hyperlink r:id="rel2"><w:r><w:t>real site</w:t></w:r></w:hyperlink></w:p>`,
+    [
+      { id: "rel1", target: "attachment.xlsx" },
+      { id: "rel2", target: "https://example.com/x" },
+    ],
+  );
 
   await writeDocx(
     at("summary.docx"),

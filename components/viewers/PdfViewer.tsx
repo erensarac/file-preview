@@ -19,6 +19,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /** Pages kept rendered on either side of the visible ones. */
 const OVERSCAN = 1;
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+/** Matches the scroller's `p-2`; the fit maths has to subtract it. */
+const SCROLLER_PADDING = 8;
 
 type LoadingTask = ReturnType<
   typeof import("pdfjs-dist/legacy/build/pdf.mjs").getDocument
@@ -34,11 +36,26 @@ export default function PdfViewer({ bytes }: { bytes: Uint8Array }) {
   const scroller = useRef<HTMLDivElement>(null);
   const [doc, setDoc] = useState<PdfDocument | null>(null);
   const [sizes, setSizes] = useState<PageSize[]>([]);
-  const [zoomStep, setZoomStep] = useState(2); // 1x
+  // `null` means fit to the width available. A phone is narrower than an A4
+  // page at 100%, so a fixed default left the page cut off with no hint that
+  // the rest of it was reachable by scrolling sideways.
+  const [chosenZoom, setChosenZoom] = useState<number | null>(null);
+  const [available, setAvailable] = useState(0);
   const [visible, setVisible] = useState({ from: 0, to: 2 });
   const [error, setError] = useState<string | null>(null);
 
-  const zoom = ZOOM_STEPS[zoomStep]!;
+  const pageWidth = sizes[0]?.width ?? 0;
+  /**
+   * Never magnifies — only shrinks a page that would not otherwise fit.
+   *
+   * Widening to fill a large monitor would blow a small page up to fill it,
+   * which is not what "fit" means to anyone, and would change what a desktop
+   * user sees today for no reason.
+   */
+  const fitZoom =
+    pageWidth > 0 && available > 0 ? Math.min(1, available / pageWidth) : 1;
+  const zoom = chosenZoom ?? fitZoom;
+  const fitting = chosenZoom === null;
 
   useEffect(() => {
     let cancelled = false;
@@ -104,6 +121,21 @@ export default function PdfViewer({ bytes }: { bytes: Uint8Array }) {
     };
   }, [bytes]);
 
+  useEffect(() => {
+    const element = scroller.current;
+    if (!element) return;
+
+    // `clientWidth` already excludes a scrollbar, so a page fitted this way
+    // does not then overflow because fitting it revealed one.
+    const measure = () =>
+      setAvailable(Math.max(0, element.clientWidth - SCROLLER_PADDING * 2));
+    measure();
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [doc]);
+
   const recompute = useCallback(() => {
     const element = scroller.current;
     if (!element || sizes.length === 0) return;
@@ -118,6 +150,12 @@ export default function PdfViewer({ bytes }: { bytes: Uint8Array }) {
   }, [sizes, zoom]);
 
   useEffect(recompute, [recompute]);
+
+  // A fitted zoom is rarely one of the steps, so "next" and "previous" are
+  // found by value. `null` means there is nothing further in that direction.
+  const zoomIn = ZOOM_STEPS.find((step) => step > zoom + 0.001) ?? null;
+  const zoomOut =
+    [...ZOOM_STEPS].reverse().find((step) => step < zoom - 0.001) ?? null;
 
   if (error) {
     return (
@@ -140,11 +178,16 @@ export default function PdfViewer({ bytes }: { bytes: Uint8Array }) {
           {doc.numPages} {doc.numPages === 1 ? "page" : "pages"}
         </span>
         <div className="ml-auto flex items-center gap-1">
+          {/*
+            Steps are taken relative to the zoom in effect rather than to an
+            index, because the starting point can be a fitted zoom that is not
+            one of the steps at all.
+          */}
           <button
             type="button"
             aria-label="Zoom out"
-            disabled={zoomStep === 0}
-            onClick={() => setZoomStep((step) => Math.max(0, step - 1))}
+            disabled={zoomOut === null}
+            onClick={() => zoomOut !== null && setChosenZoom(zoomOut)}
             className="rounded border border-line px-2 py-1 disabled:opacity-40"
           >
             −
@@ -155,13 +198,29 @@ export default function PdfViewer({ bytes }: { bytes: Uint8Array }) {
           <button
             type="button"
             aria-label="Zoom in"
-            disabled={zoomStep === ZOOM_STEPS.length - 1}
-            onClick={() =>
-              setZoomStep((step) => Math.min(ZOOM_STEPS.length - 1, step + 1))
-            }
+            disabled={zoomIn === null}
+            onClick={() => zoomIn !== null && setChosenZoom(zoomIn)}
             className="rounded border border-line px-2 py-1 disabled:opacity-40"
           >
             +
+          </button>
+          {/*
+            `aria-pressed` rather than a disabled button: fit is a mode you can
+            see you are in, and a disabled control announces nothing.
+          */}
+          <button
+            type="button"
+            aria-label="Fit page width"
+            aria-pressed={fitting}
+            onClick={() => setChosenZoom(null)}
+            className={[
+              "ml-1 rounded border px-2 py-1",
+              fitting
+                ? "border-accent text-ink"
+                : "border-line hover:text-ink",
+            ].join(" ")}
+          >
+            Fit
           </button>
         </div>
       </div>
@@ -174,7 +233,7 @@ export default function PdfViewer({ bytes }: { bytes: Uint8Array }) {
         // Nothing inside a page can hold focus, so without this the document
         // cannot be scrolled from the keyboard at all.
         tabIndex={0}
-        className="max-h-[70vh] min-h-0 overflow-auto bg-canvas p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+        className="viewer-scroller bg-canvas p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
       >
         <div className="mx-auto flex w-max flex-col gap-4">
           {sizes.map((size, index) => (

@@ -48,7 +48,14 @@ export default function TextViewer({
   // never swaps and can afford its own simpler layout.
   if (lines.length > MAX_NUMBERED_LINES) {
     return (
-      <pre className="overflow-auto px-6 py-6 font-mono text-sm leading-6">
+      <pre
+        role="region"
+        aria-label="File contents"
+        // Same reason as the branch below: a scroll region nothing inside can
+        // focus is unreachable without a pointer.
+        tabIndex={0}
+        className="viewer-scroller px-4 py-6 font-mono text-sm leading-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent sm:px-6"
+      >
         {text}
       </pre>
     );
@@ -70,7 +77,7 @@ export default function TextViewer({
       // Keyboard users need a focus stop to scroll a region whose contents are
       // inert text.
       tabIndex={0}
-      className="overflow-auto py-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+      className="viewer-scroller py-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
     >
       {highlighted ? (
         // Shiki builds this from parsed tokens rather than by interpolating

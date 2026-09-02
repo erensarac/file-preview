@@ -137,6 +137,36 @@ That is the whole list, and it lives in component state rather than storage on
 purpose: remembering widths across visits would mean keeping a record of which
 files someone opened, which is not a trade worth making for a column width.
 
+## Narrow screens
+
+Nothing was designed below a desktop width until it was measured. At 390x844 —
+the most common phone viewport — 328px of an 844px screen went on the title,
+the description and the drop target before any of the file the user came to
+read, a PDF page rendered 620px wide inside a 390px window with nothing to say
+the rest was reachable, and a long Markdown document had no height cap at all,
+so the pane grew past the viewport and scrolled the filename off the top.
+
+Three rules came out of that:
+
+- **One scroll region rule, in `.viewer-scroller`.** The four viewers used to
+  disagree — two capped at `70vh`, two had no cap — and now share one. It is
+  `dvh`, not `vh`: a phone's URL bar retracts as you scroll and `vh` stays
+  pinned to the tall viewport, so a `vh`-sized scroller resizes underneath the
+  finger scrolling it.
+- **A PDF fits the width it has.** Zoom is a number the user picked or, by
+  default, whatever fits. Fitting never magnifies — it only shrinks a page too
+  wide for the window — so nothing changes on a desktop, where a page already
+  fits at 100%.
+- **The column resize handle stops taking pointer events on a coarse pointer.**
+  It is an 8px strip carrying `touch-action: none` down the right edge of every
+  column header, so on a phone it swallowed any scroll that started near a
+  column border. It stays in the DOM and stays focusable: the keyboard path is
+  untouched, which is what a tablet with a keyboard needs.
+
+Below `sm` the drop zone stops describing a drag. A phone has no such gesture,
+and naming it next to the button that is the only way in is worse than saying
+nothing.
+
 ## Accessibility
 
 Every viewer is audited with axe against WCAG A and AA, in both colour schemes,
@@ -148,6 +178,13 @@ the required 4.5:1.
 Contrast is why the high-contrast Shiki themes are used and why the accent
 carries its own foreground token: white on the dark scheme's accent does not
 pass, so the text flips instead.
+
+The same sweep runs at a phone width, which is not redundant: width changes
+what axe can see. Its first run found a code block inside a rendered document
+scrolling sideways with no way to focus it — invisible to the desktop sweep,
+because at that width the same block fits and is not a scroll region at all.
+WCAG 2.2 AA is included for its target-size rule, which only says anything
+where the controls are tightest.
 
 Automated rules cannot judge whether a control can actually be operated, so
 keyboard paths are covered separately: sheet tabs are one tab stop with arrow

@@ -93,6 +93,21 @@ export function sanitizeDocumentHtml(purifier: Purifier, html: string): string {
       node.setAttribute("id", nextId(node.textContent ?? ""));
     }
 
+    /*
+     * A code block in a rendered document scrolls sideways when a line is
+     * wider than the pane — see `.rendered-doc pre` — and nothing inside it
+     * can hold focus, so without a tab stop there is no way to reach that
+     * scroll with a keyboard at all.
+     *
+     * This only shows up on a narrow viewport, where the lines start
+     * overflowing; the desktop audit never saw it because the same block fits.
+     * Given unconditionally rather than only to blocks that overflow, because
+     * whether one does depends on the window width at the moment you look.
+     */
+    if (node.tagName === "PRE" && !node.hasAttribute("tabindex")) {
+      node.setAttribute("tabindex", "0");
+    }
+
     const href = node.getAttribute?.("href");
     if (
       href !== null &&

@@ -82,6 +82,28 @@ const parseJson: ClientParser = async (file, notices) => {
   }
 };
 
+/**
+ * PDF is passed through rather than parsed.
+ *
+ * The bytes are checked for the file signature and handed to the viewer, which
+ * renders pages with pdf.js as they are scrolled to. Doing the rendering here
+ * would mean producing every page as a bitmap before the first one could be
+ * shown.
+ */
+const parsePdf: ClientParser = async (file) => {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+
+  // "%PDF-". A file that fails this would otherwise reach pdf.js and come back
+  // as an opaque worker error.
+  const signature = [0x25, 0x50, 0x44, 0x46, 0x2d];
+  const looksRight = signature.every((byte, index) => bytes[index] === byte);
+  if (!looksRight) {
+    throw new Error("This doesn't look like a PDF file.");
+  }
+
+  return { kind: "pdf", bytes };
+};
+
 const parseText: ClientParser = async (file) => ({
   kind: "text",
   text: await file.text(),
@@ -94,6 +116,7 @@ const PARSERS: Partial<Record<FormatId, ClientParser>> = {
   markdown: parseMarkdown,
   json: parseJson,
   text: parseText,
+  pdf: parsePdf,
 };
 
 // A format whose runtime and parser disagree fails confusingly at the far end —

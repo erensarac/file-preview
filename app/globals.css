@@ -131,6 +131,56 @@ body {
 }
 
 /*
+ * The selectable text layer over a rendered PDF page.
+ *
+ * pdf.js positions one span per text run and expects the container to carry
+ * `--total-scale-factor`; the rules below are the minimum from its own
+ * stylesheet that those spans depend on. The text is transparent — the canvas
+ * underneath is what you see — but it is real text, so it can be selected,
+ * copied and found with the browser's own search.
+ */
+.pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 1;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+.pdf-text-layer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+}
+.pdf-text-layer > :not(.markedContent),
+.pdf-text-layer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x))
+    scale(var(--min-font-size-inv));
+}
+.pdf-text-layer .markedContent {
+  display: contents;
+}
+/* The selection has to be visible against the page it sits on. */
+.pdf-text-layer ::selection {
+  background: color-mix(in srgb, var(--color-accent) 45%, transparent);
+}
+
+/*
  * Styling for parser-produced HTML (Markdown and Word), which arrives as a
  * sanitized string and therefore can't carry utility classes of its own.
  */

@@ -50,9 +50,17 @@ export default function DropZone({ onFile, busy, compact = false }: Props) {
           : "border-line bg-surface hover:border-muted",
       ].join(" ")}
     >
+      {/*
+        The input stays in the accessibility tree rather than being hidden from
+        it: it is the real control, and the button below just clicks it. Without
+        a name it is an unlabelled focus stop, which is what axe reports as a
+        critical `label` failure.
+      */}
       <input
         ref={inputRef}
+        id="file-input"
         type="file"
+        aria-label="Choose a file to preview"
         accept={ACCEPT_ATTRIBUTE}
         className="sr-only"
         onChange={(event) => {
@@ -90,7 +98,7 @@ export default function DropZone({ onFile, busy, compact = false }: Props) {
           disabled={busy}
           onClick={() => inputRef.current?.click()}
           className={[
-            "rounded-lg bg-accent font-medium text-white transition-opacity",
+            "rounded-lg bg-accent font-medium text-on-accent transition-opacity",
             "hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50",
             compact ? "px-3 py-1.5 text-sm" : "mt-6 px-5 py-2.5",
           ].join(" ")}

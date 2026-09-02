@@ -64,7 +64,14 @@ export default function TextViewer({
    * spec pins the line positions across it.
    */
   return (
-    <div className="overflow-auto py-3">
+    <div
+      role="region"
+      aria-label="File contents"
+      // Keyboard users need a focus stop to scroll a region whose contents are
+      // inert text.
+      tabIndex={0}
+      className="overflow-auto py-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+    >
       {highlighted ? (
         // Shiki builds this from parsed tokens rather than by interpolating
         // the source, so the file's own text is never treated as markup.

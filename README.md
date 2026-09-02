@@ -99,6 +99,23 @@ That's it — detection, routing, the drop zone chips, size limits and the viewe
 all follow from the registry. Only a genuinely new *kind* of content — an image,
 say — needs a new `Preview` variant and viewer, as PDF did.
 
+## Accessibility
+
+Every viewer is audited with axe against WCAG A and AA, in both colour schemes,
+as part of the suite. The first run found three real failures: an unlabelled
+file input, scroll regions no keyboard could reach, and contrast — the primary
+button at 2.66:1 in dark mode, and syntax tokens at 3.42:1 and 4.41:1 against
+the required 4.5:1.
+
+Contrast is why the high-contrast Shiki themes are used and why the accent
+carries its own foreground token: white on the dark scheme's accent does not
+pass, so the text flips instead.
+
+Automated rules cannot judge whether a control can actually be operated, so
+keyboard paths are covered separately: sheet tabs are one tab stop with arrow
+keys inside, column resize handles take arrow keys and Enter for auto-fit, and
+scroll regions are focusable so they can be scrolled without a pointer.
+
 ## Safety notes
 
 - Parser HTML output (Markdown, Word) goes through DOMPurify **in the adapter**,

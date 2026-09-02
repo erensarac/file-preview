@@ -14,6 +14,7 @@
   --color-ink: var(--palette-ink);
   --color-muted: var(--palette-muted);
   --color-accent: var(--palette-accent);
+  --color-on-accent: var(--palette-on-accent);
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -26,6 +27,12 @@
   --palette-ink: #1c1b19;
   --palette-muted: #6f6b65;
   --palette-accent: #b4531f;
+  /*
+   * Text sitting on the accent. It has to flip with the scheme: the dark
+   * palette's accent is a light orange, and white on it measures 2.66:1 —
+   * well under the 4.5:1 AA needs.
+   */
+  --palette-on-accent: #ffffff;
 
   color-scheme: light dark;
 }
@@ -38,6 +45,7 @@
     --palette-ink: #f2f0ec;
     --palette-muted: #a5a099;
     --palette-accent: #e2884f;
+    --palette-on-accent: #171614;
   }
 }
 

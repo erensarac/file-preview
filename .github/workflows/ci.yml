@@ -38,6 +38,7 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      # Covers the accessibility audit too — axe runs as part of the suite.
       - name: End-to-end tests
         run: npm test
 

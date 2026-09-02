@@ -169,7 +169,12 @@ export default function PdfViewer({ bytes }: { bytes: Uint8Array }) {
       <div
         ref={scroller}
         onScroll={recompute}
-        className="max-h-[70vh] min-h-0 overflow-auto bg-canvas p-2"
+        role="region"
+        aria-label={`Document pages, ${doc.numPages} in total`}
+        // Nothing inside a page can hold focus, so without this the document
+        // cannot be scrolled from the keyboard at all.
+        tabIndex={0}
+        className="max-h-[70vh] min-h-0 overflow-auto bg-canvas p-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
       >
         <div className="mx-auto flex w-max flex-col gap-4">
           {sizes.map((size, index) => (
@@ -256,7 +261,15 @@ function PdfPage({
       style={{ width: size.width * zoom, height: size.height * zoom }}
     >
       {active ? (
-        <canvas ref={canvas} className="block" />
+        // A canvas with no accessible name is an unnamed image to assistive
+        // technology. There is no text to expose — the page is a bitmap — so
+        // the honest label is which page it is.
+        <canvas
+          ref={canvas}
+          role="img"
+          aria-label={`Page ${pageNumber}`}
+          className="block"
+        />
       ) : (
         <span className="absolute inset-0 grid place-items-center text-xs text-muted">
           {pageNumber}

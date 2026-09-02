@@ -52,11 +52,21 @@ const parseDelimited =
     };
   };
 
+let markdownHooksRegistered = false;
+
 const parseMarkdown: ClientParser = async (file) => {
-  const [{ marked }, { default: DOMPurify }] = await Promise.all([
-    import("marked"),
-    import("dompurify"),
-  ]);
+  const [{ marked }, { default: DOMPurify }, { neutraliseUnreachableTargets }] =
+    await Promise.all([
+      import("marked"),
+      import("dompurify"),
+      import("../document-links"),
+    ]);
+
+  // The hook lives on the module-level instance, so it is registered once.
+  if (!markdownHooksRegistered) {
+    neutraliseUnreachableTargets(DOMPurify);
+    markdownHooksRegistered = true;
+  }
 
   const raw = await marked.parse(await file.text(), { async: true });
 

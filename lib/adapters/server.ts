@@ -139,11 +139,21 @@ const parseXlsx: ServerParser = async (bytes, notices) => {
   return { kind: "sheet", sheets };
 };
 
+let docxHooksRegistered = false;
+
 const parseDocx: ServerParser = async (bytes, notices) => {
-  const [{ default: mammoth }, { default: DOMPurify }] = await Promise.all([
-    import("mammoth"),
-    import("isomorphic-dompurify"),
-  ]);
+  const [{ default: mammoth }, { default: DOMPurify }, { neutraliseUnreachableTargets }] =
+    await Promise.all([
+      import("mammoth"),
+      import("isomorphic-dompurify"),
+      import("../document-links"),
+    ]);
+
+  // Word carries the same relative hrefs, so it needs the same pass.
+  if (!docxHooksRegistered) {
+    neutraliseUnreachableTargets(DOMPurify);
+    docxHooksRegistered = true;
+  }
 
   // mammoth's Node build only unzips from a path or a real Buffer, so unlike
   // exceljs this genuinely needs the conversion, not just a cast.

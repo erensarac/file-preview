@@ -221,6 +221,25 @@ body {
   height: auto;
   border-radius: 8px;
 }
+/*
+ * A link or image whose target does not exist outside the original file. The
+ * text stays readable and the styling says it is not a link, rather than
+ * offering a click that would navigate away from the preview.
+ */
+.rendered-doc [data-unreachable] {
+  color: var(--color-muted);
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: not-allowed;
+}
+.rendered-doc span[data-unreachable] {
+  display: inline-block;
+  padding: 0.35rem 0.6rem;
+  border: 1px dashed var(--color-line);
+  border-radius: 6px;
+  font-size: 0.8125rem;
+}
+
 .rendered-doc hr {
   border: 0;
   border-top: 1px solid var(--color-line);

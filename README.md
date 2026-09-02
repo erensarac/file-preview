@@ -55,6 +55,17 @@ copied into `public/pdfjs/` by `scripts/copy-pdf-assets.mjs`, which `prebuild`
 and `predev` run, along with the worker. They are copied rather than committed
 so they cannot drift from the installed version.
 
+Each rendered page also carries a transparent layer of positioned text from
+pdf.js, so a page can be selected, copied and found with the browser's own
+search, and read by a screen reader. The canvas is `aria-hidden` for that
+reason — the words are already in the DOM, and announcing the bitmap too would
+read the page twice.
+
+The layer is laid out in CSS pixels, using the zoom alone rather than the
+canvas's zoom × device-pixel-ratio backing scale. Mixing the two puts the
+selection boxes at a fraction of the glyphs they belong to, which is invisible
+until someone tries to select something.
+
 The **legacy** build is used deliberately: the default one calls
 `Map.prototype.getOrInsertComputed`, which is new enough that rendering throws
 on browsers still in common use.

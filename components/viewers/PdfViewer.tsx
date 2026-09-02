@@ -195,6 +195,13 @@ export default function PdfViewer({ bytes }: { bytes: Uint8Array }) {
   );
 }
 
+/**
+ * One page: a canvas, and a transparent layer of positioned text over it.
+ *
+ * The canvas is what you see; the text layer is what you can select, copy and
+ * find with the browser's own search. Without it a page is an image, and a
+ * screen reader gets nothing but the page number.
+ */
 function PdfPage({
   doc,
   pageNumber,
@@ -209,6 +216,7 @@ function PdfPage({
   active: boolean;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const textLayer = useRef<HTMLDivElement>(null);
   const [rendered, setRendered] = useState(false);
 
   useEffect(() => {
@@ -219,6 +227,7 @@ function PdfPage({
 
     let cancelled = false;
     let task: { cancel: () => void } | null = null;
+    let text: { cancel: () => void } | null = null;
 
     (async () => {
       const page = await doc.getPage(pageNumber);
@@ -244,12 +253,40 @@ function PdfPage({
         if (!cancelled) setRendered(true);
       } catch {
         // A render cancelled by scrolling away or zooming is expected.
+        return;
+      }
+
+      const layer = textLayer.current;
+      if (cancelled || !layer) return;
+
+      // The text layer is laid out in CSS pixels, so it uses the zoom alone —
+      // not zoom x pixel ratio, which is the canvas's own backing-store scale.
+      // Mixing the two puts the selection boxes at a fraction of the glyphs
+      // they belong to.
+      const cssViewport = page.getViewport({ scale: zoom });
+      layer.replaceChildren();
+      layer.style.setProperty("--total-scale-factor", String(zoom));
+
+      const { TextLayer } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      if (cancelled) return;
+
+      const built = new TextLayer({
+        textContentSource: page.streamTextContent(),
+        container: layer,
+        viewport: cssViewport,
+      });
+      text = built;
+      try {
+        await built.render();
+      } catch {
+        // Cancelled by a zoom or by scrolling away; the canvas still stands.
       }
     })();
 
     return () => {
       cancelled = true;
       task?.cancel();
+      text?.cancel();
     };
   }, [doc, pageNumber, zoom, size, active]);
 
@@ -261,15 +298,19 @@ function PdfPage({
       style={{ width: size.width * zoom, height: size.height * zoom }}
     >
       {active ? (
-        // A canvas with no accessible name is an unnamed image to assistive
-        // technology. There is no text to expose — the page is a bitmap — so
-        // the honest label is which page it is.
-        <canvas
-          ref={canvas}
-          role="img"
-          aria-label={`Page ${pageNumber}`}
-          className="block"
-        />
+        <>
+          {/*
+            The canvas is decorative once the text layer exists: the words are
+            in the DOM below it, so announcing the bitmap as an image as well
+            would make a screen reader read the page twice.
+          */}
+          <canvas ref={canvas} aria-hidden className="block" />
+          <div
+            ref={textLayer}
+            data-testid={`pdf-text-${pageNumber}`}
+            className="pdf-text-layer"
+          />
+        </>
       ) : (
         <span className="absolute inset-0 grid place-items-center text-xs text-muted">
           {pageNumber}

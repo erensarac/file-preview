@@ -96,3 +96,60 @@ test("a file that is not a PDF is refused on its signature", async ({
   );
   await expect(page.locator("canvas")).toHaveCount(0);
 });
+
+test.describe("the text layer", () => {
+  test("page text is real text, not just a picture", async ({ page }) => {
+    await openPdf(page);
+    await expect(rendered(page, 1)).toBeVisible();
+
+    // The words are in the DOM, which is what makes selection, copying, the
+    // browser's own find, and screen readers work at all.
+    await expect(page.getByTestId("pdf-text-1")).toContainText("Page 1 of 12");
+  });
+
+  test("text sits over the glyphs it belongs to", async ({ page }) => {
+    await openPdf(page);
+    await expect(rendered(page, 1)).toBeVisible();
+
+    const overlap = async () =>
+      page.evaluate(() => {
+        const layer = document.querySelector('[data-testid="pdf-text-1"]');
+        const span = layer?.querySelector("span");
+        const canvas = document.querySelector(
+          '[data-testid="pdf-page-1"] canvas',
+        );
+        if (!span || !canvas) return null;
+
+        const text = span.getBoundingClientRect();
+        const page = canvas.getBoundingClientRect();
+        return {
+          // Where the text run sits on the page, as a fraction of its size.
+          x: (text.left - page.left) / page.width,
+          y: (text.top - page.top) / page.height,
+        };
+      });
+
+    const before = await overlap();
+    expect(before).not.toBeNull();
+
+    // Zooming rebuilds the layer at the new scale. Using the canvas's own
+    // scale here instead of the CSS one would put the spans at a fraction of
+    // the glyphs, which is invisible until someone tries to select.
+    await page.getByRole("button", { name: "Zoom in" }).click();
+    await expect(page.getByText("125%")).toBeVisible();
+    await expect(page.getByTestId("pdf-text-1")).toContainText("Page 1 of 12");
+
+    const after = await overlap();
+    expect(after!.x).toBeCloseTo(before!.x, 2);
+    expect(after!.y).toBeCloseTo(before!.y, 2);
+  });
+
+  test("only rendered pages carry a text layer", async ({ page }) => {
+    await openPdf(page);
+    await expect(rendered(page, 1)).toBeVisible();
+
+    // Same rule as the canvases: a hundred-page document should not hold a
+    // hundred layers to show one screen.
+    await expect(page.getByTestId("pdf-text-12")).toHaveCount(0);
+  });
+});

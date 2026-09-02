@@ -52,27 +52,19 @@ const parseDelimited =
     };
   };
 
-let markdownHooksRegistered = false;
-
 const parseMarkdown: ClientParser = async (file) => {
-  const [{ marked }, { default: DOMPurify }, { neutraliseUnreachableTargets }] =
+  const [{ marked }, { default: DOMPurify }, { sanitizeDocumentHtml }] =
     await Promise.all([
       import("marked"),
       import("dompurify"),
-      import("../document-links"),
+      import("../document-html"),
     ]);
-
-  // The hook lives on the module-level instance, so it is registered once.
-  if (!markdownHooksRegistered) {
-    neutraliseUnreachableTargets(DOMPurify);
-    markdownHooksRegistered = true;
-  }
 
   const raw = await marked.parse(await file.text(), { async: true });
 
   // The file is untrusted input rendered into our own origin, so it goes
-  // through DOMPurify before it ever reaches dangerouslySetInnerHTML.
-  return { kind: "html", html: DOMPurify.sanitize(raw) };
+  // through the document pass before it ever reaches dangerouslySetInnerHTML.
+  return { kind: "html", html: sanitizeDocumentHtml(DOMPurify, raw) };
 };
 
 const parseJson: ClientParser = async (file, notices) => {

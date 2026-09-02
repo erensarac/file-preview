@@ -139,11 +139,16 @@ scroll regions are focusable so they can be scrolled without a pointer.
   before it reaches `dangerouslySetInnerHTML`. New `kind: "html"` adapters must
   do the same.
 - Relative link and image targets are stripped by the same sanitizer pass
-  (`lib/document-links.ts`). A previewed document isn't hosted anywhere, so a
+  (`lib/document-html.ts`). A previewed document isn't hosted anywhere, so a
   relative href resolves against *our* origin — it navigates away from the
   preview, loses the open file, and lets a document make this site appear to
   offer whatever it names. Absolute `http(s)`, `mailto:` and `tel:` links, and
   same-document anchors, are left alone.
+- Headings are given ids by that same pass, using GitHub's slug rule so a table
+  of contents written against GitHub's rendering still works. Repeated headings
+  take a numeric suffix in document order, and letters are matched by Unicode
+  property rather than `a-z` — "Şubat Özeti" becomes `şubat-özeti` instead of
+  collapsing to nothing.
 - The server action re-detects the format and re-checks the size; the filename
   and MIME type from the client are treated as untrusted.
 - Parser errors are logged server-side and replaced with a generic message,

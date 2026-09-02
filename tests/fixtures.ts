@@ -163,6 +163,38 @@ export async function buildFixtures(): Promise<void> {
     ].join("\n"),
   );
 
+  // A table of contents pointing at headings that repeat, carry punctuation
+  // and are not Latin — the three ways slugging goes wrong.
+  writeFileSync(
+    at("toc.md"),
+    [
+      "# Contents",
+      "",
+      "- [Straight to notes](#notes)",
+      "- [The second notes](#notes-1)",
+      "- [Turkish heading](#şubat-özeti)",
+      "- [Punctuation](#whats-new)",
+      "",
+      "## Notes",
+      "",
+      "First set of notes.",
+      "",
+      "## Şubat Özeti",
+      "",
+      "Aylık rapor.",
+      "",
+      "## What's new?",
+      "",
+      "Some news.",
+      "",
+      "## Notes",
+      "",
+      "Second set, same heading text.",
+      "",
+      `${"Filler to make the page scroll.\n\n".repeat(40)}`,
+    ].join("\n"),
+  );
+
   // Fenced blocks in four flavours: a language named the way an extension is,
   // one named the way a grammar is, one nobody has a grammar for, and one the
   // author explicitly asked to leave alone.

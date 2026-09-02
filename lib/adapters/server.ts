@@ -139,21 +139,15 @@ const parseXlsx: ServerParser = async (bytes, notices) => {
   return { kind: "sheet", sheets };
 };
 
-let docxHooksRegistered = false;
-
 const parseDocx: ServerParser = async (bytes, notices) => {
-  const [{ default: mammoth }, { default: DOMPurify }, { neutraliseUnreachableTargets }] =
+  // Word goes through the same document pass as Markdown: it carries the same
+  // relative hrefs, and its headings deserve the same ids.
+  const [{ default: mammoth }, { default: DOMPurify }, { sanitizeDocumentHtml }] =
     await Promise.all([
       import("mammoth"),
       import("isomorphic-dompurify"),
-      import("../document-links"),
+      import("../document-html"),
     ]);
-
-  // Word carries the same relative hrefs, so it needs the same pass.
-  if (!docxHooksRegistered) {
-    neutraliseUnreachableTargets(DOMPurify);
-    docxHooksRegistered = true;
-  }
 
   // mammoth's Node build only unzips from a path or a real Buffer, so unlike
   // exceljs this genuinely needs the conversion, not just a cast.
@@ -181,7 +175,7 @@ const parseDocx: ServerParser = async (bytes, notices) => {
     notices.push("Document is very large; the preview has been truncated.");
   }
 
-  return { kind: "html", html: DOMPurify.sanitize(html) };
+  return { kind: "html", html: sanitizeDocumentHtml(DOMPurify, html) };
 };
 
 const PARSERS: Partial<Record<FormatId, ServerParser>> = {

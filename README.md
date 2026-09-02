@@ -116,6 +116,16 @@ landing page names a format the registry knows, so they cannot drift.
 domain over the per-deployment hostname, so previews do not claim to be
 canonical.
 
+## What is remembered
+
+Column widths, per sheet, for as long as the file is open. Widen a column, look
+at another sheet, come back — it is still widened. Opening another file starts
+fresh, because the pane is remounted per file.
+
+That is the whole list, and it lives in component state rather than storage on
+purpose: remembering widths across visits would mean keeping a record of which
+files someone opened, which is not a trade worth making for a column width.
+
 ## Accessibility
 
 Every viewer is audited with axe against WCAG A and AA, in both colour schemes,

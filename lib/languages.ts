@@ -174,6 +174,47 @@ const EXTENSION_TO_GRAMMAR: Record<string, string> = {
   zsh: "shellscript",
 };
 
+/**
+ * Names people write after a Markdown fence that aren't extensions.
+ *
+ * `ts` and `py` already resolve through the extension map; these are the ones
+ * that don't, plus the "no highlighting wanted" spellings, which map to null so
+ * a fenced block marked `text` is left alone rather than guessed at.
+ */
+const FENCE_ALIASES: Record<string, string | null> = {
+  console: "shellscript",
+  javascriptreact: "jsx",
+  node: "javascript",
+  objc: "objective-c",
+  plaintext: "text",
+  shell: "shellscript",
+  text: "text",
+  txt: "text",
+  typescriptreact: "tsx",
+  yml: "yaml",
+};
+
+/**
+ * Resolves the token after a Markdown fence to a grammar.
+ *
+ * Fences carry language names rather than extensions, and the two overlap
+ * without matching: `typescript` is a grammar id but not an extension, `ts` is
+ * an extension but not a grammar id.
+ */
+export function grammarForFenceName(name: string): string | null {
+  const token = name.trim().toLowerCase();
+  if (!token) return null;
+
+  if (token in GRAMMARS) return token;
+
+  const alias = FENCE_ALIASES[token];
+  if (alias !== undefined) {
+    return alias !== null && alias in GRAMMARS ? alias : null;
+  }
+
+  return grammarForExtension(token);
+}
+
 export function grammarForExtension(extension: string): string | null {
   const grammar = EXTENSION_TO_GRAMMAR[extension.toLowerCase()];
   return grammar && grammar in GRAMMARS ? grammar : null;

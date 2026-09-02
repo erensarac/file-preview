@@ -82,6 +82,12 @@ Shiki's JavaScript regex engine is used rather than the Oniguruma one, which
 would mean shipping a ~500 KB WebAssembly binary to colour a SQL file. It runs
 in forgiving mode, costing some fidelity in corners of a few grammars.
 
+Fenced code blocks inside Markdown are coloured the same way, upgraded in place
+after the document renders. Only the contents of each `<code>` are replaced, so
+a block gains colour without moving. A fence naming a language nothing has a
+grammar for — or naming `text` — is left alone, and a document with no
+recognised fence never loads the highlighter at all.
+
 ## Adding a format
 
 1. Add an entry to `FORMATS` in `lib/formats.ts` with its extensions, size cap

@@ -51,6 +51,33 @@ async function getHighlighter(): Promise<HighlighterCore> {
  * loaded. The output is already escaped by Shiki — it builds the markup from
  * parsed tokens rather than interpolating the input.
  */
+/**
+ * Highlights a fenced code block for insertion into already-rendered Markdown.
+ *
+ * Returns only the tokens, with Shiki's per-line wrappers unwrapped. Those
+ * wrappers are block-level and separated by real newlines, which under
+ * `white-space: pre` would break twice and double the spacing — and the
+ * surrounding `<pre>` is the one Markdown produced, so leaving it in place is
+ * what keeps the block from moving when colour arrives.
+ */
+export async function highlightFragment(
+  code: string,
+  grammar: string,
+): Promise<string | null> {
+  const html = await highlightToHtml(code, grammar);
+  if (!html) return null;
+
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  const source = parsed.querySelector("pre > code");
+  if (!source) return null;
+
+  for (const line of source.querySelectorAll(".line")) {
+    line.replaceWith(...line.childNodes);
+  }
+
+  return source.innerHTML;
+}
+
 export async function highlightToHtml(
   code: string,
   grammar: string,

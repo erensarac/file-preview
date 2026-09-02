@@ -143,3 +143,113 @@ test("highlighting does not execute markup in the source", async ({ page }) => {
   // Shiki builds markup from parsed tokens, so source text is never markup.
   expect(await page.evaluate(() => "__pwned" in window)).toBe(false);
 });
+
+test.describe("Markdown code blocks", () => {
+  /** Coloured tokens inside the nth `<pre>` of the rendered document. */
+  const tokensIn = (page: import("@playwright/test").Page, index: number) =>
+    page.locator(".rendered-doc pre").nth(index).locator("code span[style]");
+
+  /**
+   * Distinct rendered colours in a block. Counting spans would not do: a
+   * grammar that tokenised but resolved every token to the same colour would
+   * pass that while looking exactly like plain text.
+   */
+  const coloursIn = (page: import("@playwright/test").Page, index: number) =>
+    page.locator(".rendered-doc pre").nth(index).evaluate((pre) => {
+      const spans = [...pre.querySelectorAll("code span[style]")];
+      return new Set(spans.map((span) => getComputedStyle(span).color)).size;
+    });
+
+  test("fences are highlighted, whatever the language is called", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.setInputFiles('input[type="file"]', fixture("guide.md"));
+    // Exact, or it also matches the "guide.md" filename in the pane header.
+    await expect(
+      page.getByRole("heading", { name: "Guide", exact: true }),
+    ).toBeVisible();
+
+    // `ts` is spelled like an extension, `sql` like a grammar id — both resolve.
+    await expect(tokensIn(page, 0).first()).toBeVisible();
+    await expect(tokensIn(page, 1).first()).toBeVisible();
+
+    // TypeScript separates keyword, identifier, type and string; SQL at least
+    // separates its keywords from everything else.
+    expect(await coloursIn(page, 0)).toBeGreaterThanOrEqual(3);
+    expect(await coloursIn(page, 1)).toBeGreaterThanOrEqual(2);
+  });
+
+  test("unknown and opted-out fences are left alone", async ({ page }) => {
+    await page.goto("/");
+    await page.setInputFiles('input[type="file"]', fixture("guide.md"));
+    await expect(tokensIn(page, 0).first()).toBeVisible();
+
+    // Third block names a language nothing has a grammar for; fourth says
+    // `text`, which is an explicit request not to colour it.
+    await expect(page.getByText("this should stay plain")).toBeVisible();
+    await expect(page.getByText("so should this")).toBeVisible();
+    await expect(tokensIn(page, 2)).toHaveCount(0);
+    await expect(tokensIn(page, 3)).toHaveCount(0);
+  });
+
+  test("a block does not move when its colour arrives", async ({ page }) => {
+    const boxOf = (page: import("@playwright/test").Page) =>
+      page
+        .locator(".rendered-doc pre")
+        .first()
+        .evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          return {
+            x: Math.round(box.x),
+            y: Math.round(box.y),
+            width: Math.round(box.width),
+            height: Math.round(box.height),
+          };
+        });
+
+    await page.goto("/");
+
+    // Open a fence-free document first. That loads the Markdown parser's own
+    // lazy chunks into the module cache, so the block below can stop the
+    // highlighter without also stopping the render — blocking everything from
+    // the start leaves nothing on screen to measure.
+    await page.setInputFiles('input[type="file"]', fixture("notes.md"));
+    await expect(
+      page.getByRole("heading", { name: "Release notes" }),
+    ).toBeVisible();
+
+    await page.route("**/*.js", (route) => route.abort());
+    await page.setInputFiles('input[type="file"]', fixture("guide.md"));
+    await expect(page.locator(".rendered-doc pre").first()).toBeVisible();
+    await expect(tokensIn(page, 0)).toHaveCount(0);
+    const plain = await boxOf(page);
+
+    await page.unroute("**/*.js");
+    await page.goto("/");
+    await page.setInputFiles('input[type="file"]', fixture("guide.md"));
+    await expect(tokensIn(page, 0).first()).toBeVisible();
+
+    // Only the contents of `<code>` are replaced, so the `<pre>` Markdown
+    // produced keeps its exact geometry.
+    expect(await boxOf(page)).toEqual(plain);
+  });
+
+  test("Word documents never load the highlighter", async ({ page }) => {
+    await page.goto("/");
+    const afterLoad: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().endsWith(".js")) afterLoad.push(request.url());
+    });
+
+    await page.setInputFiles('input[type="file"]', fixture("summary.docx"));
+    await expect(
+      page.getByRole("heading", { name: "Quarterly Summary" }),
+    ).toBeVisible();
+    await page.waitForTimeout(500);
+
+    // Word HTML has no fenced blocks, so the highlighter should never be
+    // fetched — the pass has to bail out before importing it.
+    expect(afterLoad).toEqual([]);
+  });
+});

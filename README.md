@@ -173,4 +173,15 @@ npm run build
 npm run typecheck
 ```
 
+CI runs typecheck and the full suite on every pull request. The Chromium
+Playwright drives is cached between runs, keyed on the resolved Playwright
+version rather than the lockfile — the lockfile changes whenever any dependency
+does, which would discard a browser that is still correct. There are no
+`restore-keys`: a near-miss would restore a browser the installed Playwright
+cannot drive.
+
+Note that `playwright install --with-deps` also installs system libraries, and
+those live outside the cached directory, so the cache-hit path still runs
+`playwright install-deps`.
+
 Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4.

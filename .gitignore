@@ -13,3 +13,6 @@ next-env.d.ts
 tests/.fixtures/
 playwright-report/
 test-results/
+
+# Copied from pdfjs-dist at build time by scripts/copy-pdf-assets.mjs
+public/pdfjs/

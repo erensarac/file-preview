@@ -17,6 +17,7 @@ export type FormatId =
   | "markdown"
   | "json"
   | "text"
+  | "pdf"
   | "xlsx"
   | "docx";
 
@@ -188,11 +189,20 @@ export const FORMATS: readonly FormatSpec[] = [
       "yml",
       "zig",
       "zsh",
-// count: 91
     ],
     mimeTypes: ["text/plain"],
     runtime: "client",
     maxBytes: 10 * MB,
+  },
+  {
+    id: "pdf",
+    label: "PDF",
+    extensions: ["pdf"],
+    mimeTypes: ["application/pdf"],
+    // Rendered by pdf.js in the tab, so it neither uploads nor runs into the
+    // deployment's request body ceiling.
+    runtime: "client",
+    maxBytes: 30 * MB,
   },
   {
     id: "xlsx",

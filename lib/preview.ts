@@ -24,7 +24,15 @@ export type Preview =
   | { kind: "sheet"; sheets: Sheet[] }
   /** Pre-sanitized HTML. Markdown and Word both land here. */
   | { kind: "html"; html: string }
-  | { kind: "text"; text: string; language: string };
+  | { kind: "text"; text: string; language: string }
+  /**
+   * PDF is the one shape that carries its source rather than a rendered
+   * result. Rendering a page is a canvas operation that only the browser can
+   * do, and doing every page up front would mean holding a bitmap of the whole
+   * document in memory to show the first screen of it — so the viewer keeps
+   * the bytes and renders pages as they are scrolled to.
+   */
+  | { kind: "pdf"; bytes: Uint8Array };
 
 export interface PreviewMeta {
   name: string;

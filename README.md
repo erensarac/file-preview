@@ -1,8 +1,8 @@
 # file
 
 Open a spreadsheet, document or data file in the browser without installing
-anything. Excel, Word, CSV, TSV, Markdown, JSON and plain text/code today; the
-architecture is built so adding the next format is a small, local change.
+anything. PDF, Excel, Word, CSV, TSV, Markdown, JSON and plain text/code today;
+the architecture is built so adding the next format is a small, local change.
 
 ## The idea
 
@@ -17,7 +17,7 @@ declares a `runtime` in `lib/formats.ts`:
 
 | Runtime  | Formats                          | What happens                                                        |
 | -------- | -------------------------------- | ------------------------------------------------------------------- |
-| `client` | CSV, TSV, Markdown, JSON, text   | Read with the File API in the tab. **Never sent anywhere.**          |
+| `client` | CSV, TSV, Markdown, JSON, text, PDF | Read with the File API in the tab. **Never sent anywhere.**       |
 | `server` | Excel (xlsx/xlsm), Word (docx)   | Posted to a server action, parsed in memory, discarded with the request. |
 
 Text formats stay local because they can — that privacy guarantee is the
@@ -35,11 +35,29 @@ lib/formats.ts          Format registry + detection. No parsing deps — importe
 lib/languages.ts        Extension → syntax grammar, one lazy import per grammar.
 lib/highlight.ts        Shiki highlighter, built on first use and reused.
 lib/preview.ts          The Preview union every adapter returns and every viewer renders.
-lib/adapters/client.ts  Browser parsers (papaparse, marked, JSON).
+lib/adapters/client.ts  Browser parsers (papaparse, marked, JSON, PDF passthrough).
 lib/adapters/server.ts  Server parsers (exceljs, mammoth). `server-only`.
 app/actions/preview.ts  The upload API, as a server action. Re-validates everything.
 components/             DropZone, PreviewPane, and one viewer per Preview kind.
 ```
+
+## PDF
+
+Rendered with pdf.js in the browser, so a PDF is never uploaded and the
+deployment's body limit doesn't apply to it. Pages are rasterised only while
+near the viewport and released again afterwards — a hundred-page document held
+entirely as bitmaps is hundreds of megabytes, and only a page or two is ever on
+screen.
+
+pdf.js's standard fonts and CMaps are not bundled with the library; without them
+documents using the fourteen base fonts render with missing text. They are
+copied into `public/pdfjs/` by `scripts/copy-pdf-assets.mjs`, which `prebuild`
+and `predev` run, along with the worker. They are copied rather than committed
+so they cannot drift from the installed version.
+
+The **legacy** build is used deliberately: the default one calls
+`Map.prototype.getOrInsertComputed`, which is new enough that rendering throws
+on browsers still in common use.
 
 ## Syntax highlighting
 
@@ -72,8 +90,8 @@ in forgiving mode, costing some fidelity in corners of a few grammars.
    the new id, returning one of the existing `Preview` shapes.
 
 That's it — detection, routing, the drop zone chips, size limits and the viewer
-all follow from the registry. Only a genuinely new *kind* of content (a paged
-PDF, an image) needs a new `Preview` variant and viewer.
+all follow from the registry. Only a genuinely new *kind* of content — an image,
+say — needs a new `Preview` variant and viewer, as PDF did.
 
 ## Safety notes
 

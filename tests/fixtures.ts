@@ -49,6 +49,55 @@ ${paragraphs}
   writeFileSync(path, await zip.generateAsync({ type: "nodebuffer" }));
 }
 
+/**
+ * A minimal but genuinely valid multi-page PDF.
+ *
+ * Written by hand rather than with a library: a PDF is a list of numbered
+ * objects followed by a cross-reference table of their byte offsets, so
+ * building it here keeps the structure under test visible — and the offsets
+ * have to be computed from the real bytes, which is the part a hand-written
+ * fixture usually gets wrong.
+ */
+function buildPdf(pageTexts: string[]): Buffer {
+  const objects: string[] = [];
+  const pageIds = pageTexts.map((_, index) => 4 + index * 2);
+
+  objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+  objects[2] =
+    `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}]` +
+    ` /Count ${pageTexts.length} >>`;
+  objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
+
+  pageTexts.forEach((text, index) => {
+    const pageId = pageIds[index]!;
+    const contentId = pageId + 1;
+    objects[pageId] =
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842]` +
+      ` /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentId} 0 R >>`;
+    const stream = `BT /F1 32 Tf 60 740 Td (${text}) Tj ET`;
+    objects[contentId] =
+      `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
+  });
+
+  let pdf = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  for (let id = 1; id < objects.length; id += 1) {
+    offsets[id] = pdf.length;
+    pdf += `${id} 0 obj\n${objects[id]}\nendobj\n`;
+  }
+
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length}\n0000000000 65535 f \n`;
+  for (let id = 1; id < objects.length; id += 1) {
+    pdf += `${String(offsets[id]).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf +=
+    `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\n` +
+    `startxref\n${xrefOffset}\n%%EOF\n`;
+
+  return Buffer.from(pdf, "latin1");
+}
+
 export async function buildFixtures(): Promise<void> {
   mkdirSync(FIXTURE_DIR, { recursive: true });
   const at = (name: string) => join(FIXTURE_DIR, name);
@@ -141,6 +190,20 @@ export async function buildFixtures(): Promise<void> {
       compressionOptions: { level: 9 },
     }),
   );
+
+  // Twelve A4 pages, so pages far down the document are genuinely off screen
+  // and the viewer's page-at-a-time rendering can be asserted rather than
+  // assumed.
+  writeFileSync(
+    at("report.pdf"),
+    buildPdf(
+      Array.from({ length: 12 }, (_, index) => `Page ${index + 1} of 12`),
+    ),
+  );
+
+  // Right extension, wrong contents — must be rejected on the signature
+  // rather than reaching pdf.js and failing as an opaque worker error.
+  writeFileSync(at("not-really.pdf"), "just some text, not a PDF\n");
 
   await writeDocx(
     at("summary.docx"),

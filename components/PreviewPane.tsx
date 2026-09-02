@@ -4,6 +4,7 @@ import { formatBytes } from "@/lib/formats";
 import type { PreviewDocument } from "@/lib/preview";
 
 import HtmlViewer from "./viewers/HtmlViewer";
+import PdfViewer from "./viewers/PdfViewer";
 import SheetViewer from "./viewers/SheetViewer";
 import TextViewer from "./viewers/TextViewer";
 
@@ -15,6 +16,8 @@ function Viewer({ preview }: { preview: PreviewDocument["preview"] }) {
       return <HtmlViewer html={preview.html} />;
     case "text":
       return <TextViewer text={preview.text} language={preview.language} />;
+    case "pdf":
+      return <PdfViewer bytes={preview.bytes} />;
   }
 }
 

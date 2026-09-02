@@ -99,6 +99,23 @@ That's it — detection, routing, the drop zone chips, size limits and the viewe
 all follow from the registry. Only a genuinely new *kind* of content — an image,
 say — needs a new `Preview` variant and viewer, as PDF did.
 
+## Landing pages
+
+People do not search for "file preview" — they search for "open xlsx online" or
+"view a docx without Word". `lib/landing.ts` carries one page per format, and
+`app/[viewer]/page.tsx` prerenders them with their own titles, descriptions and
+canonical URLs. `dynamicParams` is off, so an unlisted slug is a 404 rather than
+a dynamic segment answering for every unknown path on the site.
+
+The copy lives apart from `lib/formats.ts` deliberately: that registry describes
+how files are parsed and is imported by both runtimes. A spec asserts every
+landing page names a format the registry knows, so they cannot drift.
+
+`app/sitemap.ts` and `app/robots.ts` are generated from the same list, and
+`lib/site.ts` resolves the canonical origin — preferring Vercel's production
+domain over the per-deployment hostname, so previews do not claim to be
+canonical.
+
 ## Accessibility
 
 Every viewer is audited with axe against WCAG A and AA, in both colour schemes,

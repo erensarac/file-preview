@@ -33,10 +33,35 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Keyed on the Playwright version rather than the lockfile: the lockfile
+      # changes whenever any dependency does, which would throw away a browser
+      # that is still the right one. There are deliberately no restore-keys —
+      # a near-miss would restore a browser the installed Playwright cannot
+      # drive, which is worse than downloading.
+      - name: Resolve the Playwright version
+        id: playwright-version
+        run: |
+          echo "value=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the browser
+        id: browser-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.value }}
+
       # The Playwright config builds the app itself before starting it, so a
       # separate build step here would only do the same work twice.
       - name: Install Chromium
+        if: steps.browser-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+
+      # `--with-deps` also installs system libraries, and those live outside the
+      # cached directory — so a cache hit still needs them, or the browser fails
+      # to start on a runner that lacks one.
+      - name: Install Chromium system dependencies
+        if: steps.browser-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
 
       # Covers the accessibility audit too — axe runs as part of the suite.
       - name: End-to-end tests

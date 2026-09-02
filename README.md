@@ -211,3 +211,7 @@ those live outside the cached directory, so the cache-hit path still runs
 `playwright install-deps`.
 
 Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

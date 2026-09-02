@@ -55,11 +55,6 @@ async function getHighlighter(): Promise<HighlighterCore> {
 }
 
 /**
- * Returns Shiki's HTML for the given source, or null if the grammar can't be
- * loaded. The output is already escaped by Shiki — it builds the markup from
- * parsed tokens rather than interpolating the input.
- */
-/**
  * Highlights a fenced code block for insertion into already-rendered Markdown.
  *
  * Returns only the tokens, with Shiki's per-line wrappers unwrapped. Those
@@ -86,6 +81,11 @@ export async function highlightFragment(
   return source.innerHTML;
 }
 
+/**
+ * Returns Shiki's HTML for the given source, or null if the grammar can't be
+ * loaded. The output is already escaped by Shiki — it builds the markup from
+ * parsed tokens rather than interpolating the input.
+ */
 export async function highlightToHtml(
   code: string,
   grammar: string,

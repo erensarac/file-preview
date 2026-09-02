@@ -1,11 +1,23 @@
 import type { Metadata } from "next";
 
+import { SITE_URL } from "@/lib/site";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
+  // Resolves the relative canonical and Open Graph URLs the pages declare.
+  metadataBase: new URL(SITE_URL),
   title: "file — preview any file in your browser",
   description:
-    "Open Excel, Word, CSV, Markdown and JSON files instantly. Text formats are read in your browser and never uploaded.",
+    "Open PDF, Excel, Word, CSV, Markdown and JSON files instantly. Most formats are read in your browser and never uploaded.",
+  alternates: { canonical: "/" },
+  openGraph: {
+    title: "file — preview any file in your browser",
+    description:
+      "Open PDF, Excel, Word, CSV, Markdown and JSON files instantly. Most formats are read in your browser and never uploaded.",
+    url: "/",
+    type: "website",
+  },
 };
 
 export default function RootLayout({

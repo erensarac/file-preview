@@ -225,6 +225,49 @@ test.describe("column widths", () => {
     await expect(page.getByText("Revenue")).toBeVisible();
   });
 
+  test("survive a trip to another sheet", async ({ page }) => {
+    await open(page, "report.xlsx");
+    await expect(page.locator("table td").first()).toBeVisible();
+
+    const before = await widthOf(page, 0);
+    const handle = page.getByTestId("resize-0");
+    await handle.focus();
+    await page.keyboard.press("Shift+ArrowRight");
+    const widened = await widthOf(page, 0);
+    expect(widened).toBeGreaterThan(before);
+
+    // Measuring on every sheet change used to throw this away: widen a column,
+    // look at another sheet, come back, and it was back to the measured width.
+    await page.getByRole("tab", { name: "Notes" }).click();
+    await expect(page.getByText("Second sheet works")).toBeVisible();
+    await page.getByRole("tab", { name: "Q1" }).click();
+    await expect(page.getByText("February")).toBeVisible();
+
+    expect(await widthOf(page, 0)).toBe(widened);
+  });
+
+  test("do not carry over to the next file opened", async ({ page }) => {
+    await open(page, "report.xlsx");
+    await expect(page.locator("table td").first()).toBeVisible();
+
+    const measured = await widthOf(page, 0);
+    await page.getByTestId("resize-0").focus();
+    await page.keyboard.press("Shift+ArrowRight");
+    expect(await widthOf(page, 0)).toBeGreaterThan(measured);
+
+    // Widths last as long as the file is open and no longer — nothing is
+    // stored about which files someone opened.
+    await page.setInputFiles(
+      'input[type="file"]',
+      join(FIXTURE_DIR, "report.xlsx"),
+    );
+
+    // Polled rather than read once: the old pane is still mounted for a moment
+    // and shows the same content, so any assertion about *its* text passes
+    // immediately and proves nothing about the reopened file.
+    await expect.poll(() => widthOf(page, 0)).toBe(measured);
+  });
+
   test("double-clicking the edge fits the column to its widest value", async ({
     page,
   }) => {

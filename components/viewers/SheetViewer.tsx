@@ -43,8 +43,25 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
   const table = useRef<HTMLTableElement>(null);
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
   const [rowWindow, setRowWindow] = useState({ start: 0, end: 60 });
-  const [widths, setWidths] = useState<number[]>([]);
+  /**
+   * Widths per sheet, not per viewer.
+   *
+   * Measuring on every sheet change threw away anything the user had set:
+   * widen a column, look at another sheet, come back, and it was back to the
+   * measured width. Keyed by sheet index so each keeps its own.
+   *
+   * This lives in component state deliberately, not in storage. The pane is
+   * remounted per opened file, so widths last exactly as long as the file is
+   * open — remembering them across visits would mean keeping a record of which
+   * files someone opened, which is not a trade this project should make for a
+   * column width.
+   */
+  const [widthsBySheet, setWidthsBySheet] = useState<Record<number, number[]>>(
+    {},
+  );
   const drag = useRef<Drag | null>(null);
+
+  const widths = widthsBySheet[active] ?? [];
 
   const sheet = sheets[Math.min(active, sheets.length - 1)]!;
   const columnCount = sheet.rows.reduce(
@@ -60,16 +77,24 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
    * the mounted rows.
    */
   useLayoutEffect(() => {
-    if (!table.current || columnCount === 0) return;
-    setWidths(
-      measureColumnWidths(
-        sheet.rows,
-        columnCount,
-        fontOf(table.current),
-        columnLabel,
-      ),
-    );
-  }, [sheet, columnCount]);
+    const element = table.current;
+    if (!element || columnCount === 0) return;
+
+    setWidthsBySheet((current) => {
+      // Only the first visit measures. A later one keeps whatever is there,
+      // which is what makes a manual width survive a trip to another sheet.
+      if (current[active]) return current;
+      return {
+        ...current,
+        [active]: measureColumnWidths(
+          sheet.rows,
+          columnCount,
+          fontOf(element),
+          columnLabel,
+        ),
+      };
+    });
+  }, [active, sheet, columnCount]);
 
   /**
    * Only the visible slice of rows is mounted. Without this a sheet at the
@@ -107,13 +132,19 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
     scroller.current?.scrollTo({ top: 0 });
   }, [active]);
 
-  const setWidth = useCallback((column: number, width: number) => {
-    setWidths((current) => {
-      const next = [...current];
-      next[column] = Math.max(MIN_COLUMN_WIDTH, Math.round(width));
-      return next;
-    });
-  }, []);
+  const setWidth = useCallback(
+    (column: number, width: number) => {
+      setWidthsBySheet((current) => {
+        const existing = current[active];
+        if (!existing) return current;
+
+        const next = [...existing];
+        next[column] = Math.max(MIN_COLUMN_WIDTH, Math.round(width));
+        return { ...current, [active]: next };
+      });
+    },
+    [active],
+  );
 
   /**
    * Drag tracking lives on the window rather than the handle.

@@ -77,7 +77,7 @@ export default function HtmlViewer({ html }: { html: string }) {
       role="region"
       aria-label="Document"
       tabIndex={0}
-      className="overflow-auto px-6 py-8 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent sm:px-10"
+      className="viewer-scroller px-4 py-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent sm:px-10 sm:py-8"
     >
       <div
         className="rendered-doc mx-auto max-w-3xl"

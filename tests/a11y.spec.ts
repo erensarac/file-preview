@@ -13,10 +13,14 @@ const fixture = (name: string) => join(FIXTURE_DIR, name);
  * Scoped to WCAG A and AA: those are the rules with an agreed meaning, and
  * failing the build on best-practice rules would make the suite a matter of
  * taste rather than a check.
+ *
+ * 2.2 AA is included for its target-size rule, which is about tap targets and
+ * therefore only says anything at a phone-sized viewport — where the controls
+ * are tightest and this project had never looked.
  */
 async function violations(page: Page) {
   const results = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
     .analyze();
 
   return results.violations.map((violation) => ({
@@ -161,8 +165,59 @@ test.describe("keyboard operation", () => {
 
     const before = await panel.evaluate((element) => element.scrollTop);
     await page.keyboard.press("PageDown");
-    expect(await panel.evaluate((element) => element.scrollTop)).toBeGreaterThan(
-      before,
-    );
+
+    // Polled, not read once. A key press returns as soon as the browser has
+    // taken the event, not once it has finished acting on it, so reading
+    // `scrollTop` on the next line caught the pre-scroll value on roughly one
+    // run in five — failing on the timing rather than on the behaviour. The
+    // flake predates the phone work; it is fixed here because this is the
+    // suite that kept surfacing it.
+    await expect
+      .poll(() => panel.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(before);
   });
 });
+
+/**
+ * The same sweep at a phone width.
+ *
+ * Width changes what axe can see: the first run of this block found a code
+ * block inside a rendered document scrolling sideways with no way to focus it,
+ * which the desktop sweep cannot find because at that width the same block
+ * does not overflow and so is not a scroll region at all.
+ */
+for (const colorScheme of ["light", "dark"] as const) {
+  test.describe(`no accessibility violations on a phone (${colorScheme})`, () => {
+    test.use({ viewport: { width: 390, height: 844 }, colorScheme });
+
+    test("on the empty page", async ({ page }) => {
+      await page.goto("/");
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test("with a spreadsheet open", async ({ page }) => {
+      await page.goto("/");
+      await page.setInputFiles('input[type="file"]', fixture("report.xlsx"));
+      await expect(page.getByText("February")).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test("with a document open", async ({ page }) => {
+      await page.goto("/");
+      await page.setInputFiles('input[type="file"]', fixture("guide.md"));
+      await expect(
+        page.getByRole("heading", { name: "Guide", exact: true }),
+      ).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test("with a PDF open", async ({ page }) => {
+      await page.goto("/");
+      await page.setInputFiles('input[type="file"]', fixture("report.pdf"));
+      await expect(
+        page.locator('[data-testid="pdf-page-1"][data-rendered="true"]'),
+      ).toBeVisible({ timeout: 30_000 });
+      expect(await violations(page)).toEqual([]);
+    });
+  });
+}

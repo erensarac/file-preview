@@ -56,6 +56,45 @@ body {
 }
 
 /*
+ * The scroll region of every viewer.
+ *
+ * One rule rather than four copies, because the four used to disagree: the
+ * sheet and PDF viewers capped at `70vh` while the text and document viewers
+ * had no cap at all, so a long Markdown file grew the pane past the viewport
+ * and scrolled the filename header off the top of the page.
+ *
+ * `dvh` rather than `vh`: on a phone the URL bar retracts as you scroll, and
+ * `vh` stays pinned to the tall viewport — so a `vh`-sized scroller resizes
+ * underneath the finger that is scrolling it. `dvh` follows the viewport that
+ * is actually there.
+ */
+.viewer-scroller {
+  max-height: 70dvh;
+  min-height: 0;
+  overflow: auto;
+}
+
+/*
+ * The column resize handle, on a device driven by a finger.
+ *
+ * It is an 8px strip down the right edge of every column header carrying
+ * `touch-action: none`, so on a phone it swallowed any scroll that began near
+ * a column border — the table simply refused to move, at a dozen places
+ * across its own header. A finger cannot aim at an 8px target anyway, so on a
+ * coarse pointer the handle stops taking pointer events and the gesture
+ * reaches the scroller underneath it.
+ *
+ * It stays in the DOM and stays focusable: the keyboard path — arrows to
+ * resize, Enter to auto-fit — is untouched, which matters for a tablet that
+ * has both a touch screen and a keyboard.
+ */
+@media (pointer: coarse) {
+  .column-resize-handle {
+    pointer-events: none;
+  }
+}
+
+/*
  * Highlighted source, as produced by Shiki.
  *
  * Shiki emits both palettes at once as CSS variables, so the theme switch is a

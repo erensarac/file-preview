@@ -65,7 +65,7 @@ test("far pages are not rendered until scrolled to", async ({ page }) => {
   await page
     .locator('[data-testid="pdf-page-1"]')
     .evaluate((element) =>
-      element.closest(".overflow-auto")!.scrollTo({ top: 100_000 }),
+      element.closest(".viewer-scroller")!.scrollTo({ top: 100_000 }),
     );
 
   await expect(rendered(page, 12)).toBeVisible();

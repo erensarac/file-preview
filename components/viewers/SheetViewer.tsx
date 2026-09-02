@@ -296,7 +296,7 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
           {...(sheets.length > 1
             ? { role: "tabpanel", "aria-labelledby": `sheet-tab-${active}` }
             : { role: "region", "aria-label": sheet.name })}
-          className="max-h-[70vh] min-h-0 overflow-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+          className="viewer-scroller focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
         >
           <table
             ref={table}
@@ -347,7 +347,7 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
                       // Sits fully inside its own cell: the next header is
                       // sticky and later in DOM order, so anything overhanging
                       // the border would be covered by it and never hit.
-                      className="absolute right-0 top-0 z-10 h-full w-2 cursor-col-resize touch-none select-none hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none"
+                      className="column-resize-handle absolute right-0 top-0 z-10 h-full w-2 cursor-col-resize touch-none select-none hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none"
                     />
                   </th>
                 ))}

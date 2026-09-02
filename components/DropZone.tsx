@@ -44,7 +44,7 @@ export default function DropZone({ onFile, busy, compact = false }: Props) {
       onDrop={handleDrop}
       className={[
         "rounded-2xl border-2 border-dashed transition-colors",
-        compact ? "px-5 py-4" : "px-6 py-14 sm:py-20",
+        compact ? "px-4 py-3 sm:px-5 sm:py-4" : "px-6 py-8 sm:py-20",
         dragging
           ? "border-accent bg-accent/5"
           : "border-line bg-surface hover:border-muted",
@@ -74,21 +74,40 @@ export default function DropZone({ onFile, busy, compact = false }: Props) {
       <div
         className={
           compact
-            ? "flex flex-wrap items-center justify-between gap-3"
+            ? // Below `sm` the prompt beside it is gone, so a right-aligned
+              // button would sit at the edge of an empty dashed box. The
+              // button becomes the bar instead.
+              "flex flex-wrap items-center justify-center gap-3 sm:justify-between"
             : "flex flex-col items-center text-center"
         }
       >
+        {/*
+          A phone cannot drag a file, so the drag wording is not just useless
+          there — it describes a gesture the device does not have, next to the
+          button that is the only way in. Below `sm` the copy names the tap;
+          the compact bar drops its line entirely and keeps the button.
+        */}
         <div className={compact ? "" : "space-y-2"}>
-          <p className={compact ? "text-sm text-muted" : "text-lg font-medium"}>
-            {dragging
-              ? "Drop to open"
-              : compact
-                ? "Drop another file to replace this one"
-                : "Drop a file here"}
-          </p>
+          {dragging ? (
+            <p className={compact ? "text-sm text-muted" : "text-lg font-medium"}>
+              Drop to open
+            </p>
+          ) : compact ? (
+            <p className="hidden text-sm text-muted sm:block">
+              Drop another file to replace this one
+            </p>
+          ) : (
+            <p className="text-lg font-medium">
+              <span className="sm:hidden">Open a file</span>
+              <span className="hidden sm:inline">Drop a file here</span>
+            </p>
+          )}
           {!compact && (
             <p className="text-sm text-muted">
-              or pick one from your computer — nothing is stored either way
+              <span className="sm:hidden">nothing is stored either way</span>
+              <span className="hidden sm:inline">
+                or pick one from your computer — nothing is stored either way
+              </span>
             </p>
           )}
         </div>
@@ -100,7 +119,9 @@ export default function DropZone({ onFile, busy, compact = false }: Props) {
           className={[
             "rounded-lg bg-accent font-medium text-on-accent transition-opacity",
             "hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50",
-            compact ? "px-3 py-1.5 text-sm" : "mt-6 px-5 py-2.5",
+            compact
+              ? "w-full px-3 py-2 text-sm sm:w-auto sm:py-1.5"
+              : "mt-6 px-5 py-2.5",
           ].join(" ")}
         >
           {busy ? "Opening…" : "Choose file"}

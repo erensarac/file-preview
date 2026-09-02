@@ -32,7 +32,7 @@ export default function PreviewPane({
 
   return (
     <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-line bg-surface">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-3">
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line px-3 py-2 sm:px-4 sm:py-3">
         <h2 className="mr-auto truncate font-medium" title={meta.name}>
           {meta.name}
         </h2>

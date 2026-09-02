@@ -19,8 +19,16 @@ import { loadGrammar } from "./languages";
 /**
  * Both themes are emitted at once as CSS variables, so the rendered code
  * follows the page's light/dark setting without re-highlighting.
+ *
+ * The high-contrast variants, because the ordinary ones do not meet WCAG AA
+ * against this app's backgrounds: measured with axe, `github-light` put
+ * keywords at 4.41:1 and `github-dark` put comments at 3.42:1, both short of
+ * the 4.5:1 required for body-sized text.
  */
-const THEMES = { light: "github-light", dark: "github-dark" } as const;
+const THEMES = {
+  light: "github-light-high-contrast",
+  dark: "github-dark-high-contrast",
+} as const;
 
 let highlighterPromise: Promise<HighlighterCore> | null = null;
 const loaded = new Set<string>();
@@ -32,8 +40,8 @@ async function getHighlighter(): Promise<HighlighterCore> {
         await Promise.all([
           import("shiki/core"),
           import("shiki/engine/javascript"),
-          import("@shikijs/themes/github-light"),
-          import("@shikijs/themes/github-dark"),
+          import("@shikijs/themes/github-light-high-contrast"),
+          import("@shikijs/themes/github-dark-high-contrast"),
         ]);
 
       return createHighlighterCore({

@@ -41,6 +41,7 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
   const [active, setActive] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
   const table = useRef<HTMLTableElement>(null);
+  const tabs = useRef<(HTMLButtonElement | null)[]>([]);
   const [rowWindow, setRowWindow] = useState({ start: 0, end: 60 });
   const [widths, setWidths] = useState<number[]>([]);
   const drag = useRef<Drag | null>(null);
@@ -158,6 +159,25 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
     document.body.style.cursor = "col-resize";
   };
 
+  const onHandleKeyDown =
+    (column: number) => (event: React.KeyboardEvent) => {
+      const current = widths[column] ?? MIN_COLUMN_WIDTH;
+      // Shift for a coarse step, matching how the same keys behave on a
+      // native range input.
+      const step = event.shiftKey ? 40 : 8;
+
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setWidth(column, current + step);
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setWidth(column, current - step);
+      } else if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        onHandleDoubleClick(column)();
+      }
+    };
+
   /** Excel's double-click behaviour: size the column to its widest value. */
   const onHandleDoubleClick = (column: number) => () => {
     if (!table.current) return;
@@ -185,12 +205,38 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
           role="tablist"
           aria-label="Sheets"
           className="flex gap-1 overflow-x-auto border-b border-line px-3 pt-2"
+          // Roving tabindex: one Tab stop for the whole strip, arrows to move
+          // within it. Tabbing through every sheet of a large workbook would
+          // otherwise be the only way past this control.
+          onKeyDown={(event) => {
+            const step =
+              event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+            let next = active;
+            if (step !== 0) {
+              next = (active + step + sheets.length) % sheets.length;
+            } else if (event.key === "Home") {
+              next = 0;
+            } else if (event.key === "End") {
+              next = sheets.length - 1;
+            } else {
+              return;
+            }
+            event.preventDefault();
+            setActive(next);
+            tabs.current[next]?.focus();
+          }}
         >
           {sheets.map((candidate, index) => (
             <button
               key={`${candidate.name}-${index}`}
+              ref={(element) => {
+                tabs.current[index] = element;
+              }}
               role="tab"
+              id={`sheet-tab-${index}`}
+              aria-controls="sheet-panel"
               aria-selected={index === active}
+              tabIndex={index === active ? 0 : -1}
               onClick={() => setActive(index)}
               className={[
                 "shrink-0 rounded-t-lg px-3 py-2 text-sm transition-colors",
@@ -211,7 +257,15 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
         <div
           ref={scroller}
           onScroll={recompute}
-          className="max-h-[70vh] min-h-0 overflow-auto"
+          id="sheet-panel"
+          // A scrollable region that nothing inside can hold focus is
+          // unreachable by keyboard; making it a tab stop is what lets it be
+          // scrolled with the arrow keys.
+          tabIndex={0}
+          {...(sheets.length > 1
+            ? { role: "tabpanel", "aria-labelledby": `sheet-tab-${active}` }
+            : { role: "region", "aria-label": sheet.name })}
+          className="max-h-[70vh] min-h-0 overflow-auto focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
         >
           <table
             ref={table}
@@ -242,17 +296,27 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
                       Drag to resize, double-click to fit the widest value —
                       the two gestures Excel puts on this same edge.
                     */}
+                    {/*
+                      A separator that can only be dragged is a control with no
+                      keyboard path, so this one is focusable and takes the
+                      arrow keys — the same gestures, reachable both ways.
+                      Enter matches the double-click auto-fit.
+                    */}
                     <span
                       role="separator"
                       aria-orientation="vertical"
                       aria-label={`Resize column ${columnLabel(column)}`}
+                      aria-valuenow={widths[column] ?? MIN_COLUMN_WIDTH}
+                      aria-valuemin={MIN_COLUMN_WIDTH}
+                      tabIndex={0}
                       data-testid={`resize-${column}`}
                       onPointerDown={onHandleDown(column)}
                       onDoubleClick={onHandleDoubleClick(column)}
+                      onKeyDown={onHandleKeyDown(column)}
                       // Sits fully inside its own cell: the next header is
                       // sticky and later in DOM order, so anything overhanging
                       // the border would be covered by it and never hit.
-                      className="absolute right-0 top-0 z-10 h-full w-2 cursor-col-resize touch-none select-none hover:bg-accent/60"
+                      className="absolute right-0 top-0 z-10 h-full w-2 cursor-col-resize touch-none select-none hover:bg-accent/60 focus-visible:bg-accent focus-visible:outline-none"
                     />
                   </th>
                 ))}

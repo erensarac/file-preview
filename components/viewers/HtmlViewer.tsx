@@ -73,7 +73,12 @@ export default function HtmlViewer({ html }: { html: string }) {
   }, [html]);
 
   return (
-    <div className="overflow-auto px-6 py-8 sm:px-10">
+    <div
+      role="region"
+      aria-label="Document"
+      tabIndex={0}
+      className="overflow-auto px-6 py-8 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent sm:px-10"
+    >
       <div
         className="rendered-doc mx-auto max-w-3xl"
         dangerouslySetInnerHTML={{ __html: coloured ?? html }}

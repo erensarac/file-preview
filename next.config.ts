@@ -13,6 +13,15 @@ const nextConfig: NextConfig = {
   // exceljs and mammoth are CommonJS with optional native-ish deps; keeping them
   // external stops the bundler from trying to inline them into the server build.
   serverExternalPackages: ["exceljs", "mammoth", "isomorphic-dompurify"],
+  /*
+   * The parse worker is loaded by path at runtime rather than imported, so
+   * nothing in the module graph points at it and the deployment's file tracing
+   * would leave it behind — the server would start fine and every Office file
+   * would fail on the first upload.
+   */
+  outputFileTracingIncludes: {
+    "/**": ["./lib/parse-worker.mjs"],
+  },
 };
 
 export default nextConfig;

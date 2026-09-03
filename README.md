@@ -157,6 +157,28 @@ implies an effect it does not have — the hierarchy is size and colour. A real
 bold would mean committing a font file, which is a lot of weight for a link
 preview.
 
+## Several files at once
+
+All three ways in — a drop, the picker, and a file the operating system hands
+to the installed app — used to take the first file and say nothing about the
+rest. Dropping three files and getting one preview reads as the site being
+broken rather than as a limit.
+
+They now arrive as a set, with a strip above the pane for choosing between
+them. **Only the selected file is ever parsed**: dropping a dozen spreadsheets
+to look at one of them would otherwise mean a dozen uploads. A spec asserts
+that dropping two server-parsed files and a CSV produces exactly one request.
+
+The strip is one tab stop with arrow keys inside, like the sheet tabs. Its
+buttons are deliberately not disabled while a file opens — a browser moves
+focus off a control that becomes disabled, which broke the keyboard path after
+the first arrow press. The race that guarded against is handled in `open`
+instead, where each call takes a ticket and discards its result if a later one
+has started.
+
+A drop carrying no file at all — which is what a folder delivers — says so
+rather than doing nothing.
+
 ## What is remembered
 
 Column widths, per sheet, for as long as the file is open. Widen a column, look

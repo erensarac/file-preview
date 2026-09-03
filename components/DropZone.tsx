@@ -5,13 +5,27 @@ import { useCallback, useRef, useState } from "react";
 import { ACCEPT_ATTRIBUTE, FORMATS } from "@/lib/formats";
 
 interface Props {
-  onFile: (file: File) => void;
+  /**
+   * Everything that arrived, not just the first of it.
+   *
+   * All three ways in — a drop, the picker, and a file the operating system
+   * hands to an installed app — used to take `[0]` and say nothing about the
+   * rest, which reads as the site being broken rather than as a limit.
+   */
+  onFiles: (files: File[]) => void;
+  /** A drop that contained no readable file, usually a folder. */
+  onNothingUsable: (reason: string) => void;
   busy: boolean;
   /** Collapses the zone to a slim bar once a file is open. */
   compact?: boolean;
 }
 
-export default function DropZone({ onFile, busy, compact = false }: Props) {
+export default function DropZone({
+  onFiles,
+  onNothingUsable,
+  busy,
+  compact = false,
+}: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   // Nested elements fire dragleave as the pointer crosses them, so the drag
@@ -23,10 +37,32 @@ export default function DropZone({ onFile, busy, compact = false }: Props) {
       event.preventDefault();
       dragDepth.current = 0;
       setDragging(false);
-      const file = event.dataTransfer.files?.[0];
-      if (file) onFile(file);
+
+      const files = [...(event.dataTransfer.files ?? [])];
+      if (files.length > 0) {
+        onFiles(files);
+        return;
+      }
+
+      /*
+       * A folder produces a drop with no files in it, so without this the
+       * gesture does nothing at all and looks like the page ignoring you.
+       *
+       * `webkitGetAsEntry` is the only way to tell a folder from an empty
+       * drop, and it is prefixed everywhere despite being the standard.
+       */
+      const items = [...(event.dataTransfer.items ?? [])];
+      const folder = items.some(
+        (item) => item.webkitGetAsEntry?.()?.isDirectory === true,
+      );
+
+      onNothingUsable(
+        folder
+          ? "Folders can't be opened here — drop the files inside it instead."
+          : "That drop didn't contain a file we could read.",
+      );
     },
-    [onFile],
+    [onFiles, onNothingUsable],
   );
 
   return (
@@ -42,6 +78,7 @@ export default function DropZone({ onFile, busy, compact = false }: Props) {
         if (dragDepth.current <= 0) setDragging(false);
       }}
       onDrop={handleDrop}
+      data-testid="drop-zone"
       className={[
         "rounded-2xl border-2 border-dashed transition-colors",
         compact ? "px-4 py-3 sm:px-5 sm:py-4" : "px-6 py-8 sm:py-20",
@@ -62,10 +99,14 @@ export default function DropZone({ onFile, busy, compact = false }: Props) {
         type="file"
         aria-label="Choose a file to preview"
         accept={ACCEPT_ATTRIBUTE}
+        // The picker and drag-and-drop have to agree: offering one file in the
+        // dialogue while silently accepting many from a drop is two different
+        // products in one control.
+        multiple
         className="sr-only"
         onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) onFile(file);
+          const files = [...(event.target.files ?? [])];
+          if (files.length > 0) onFiles(files);
           // Reset so re-picking the same file fires change again.
           event.target.value = "";
         }}
@@ -94,7 +135,7 @@ export default function DropZone({ onFile, busy, compact = false }: Props) {
             </p>
           ) : compact ? (
             <p className="hidden text-sm text-muted sm:block">
-              Drop another file to replace this one
+              Drop more files to replace what is open
             </p>
           ) : (
             <p className="text-lg font-medium">

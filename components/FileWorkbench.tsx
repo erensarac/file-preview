@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { previewFile } from "@/app/actions/preview";
 import { hasClientParser, parseInBrowser } from "@/lib/adapters/client";
@@ -31,6 +31,15 @@ interface WindowWithLaunchQueue extends Window {
   };
 }
 
+/**
+ * How many files a single drop may open at once.
+ *
+ * A strip is a way of choosing between a handful of files, not a file manager;
+ * past this it stops being readable and starts being a list. Anything beyond
+ * is disclosed rather than silently dropped, which is the whole point.
+ */
+const MAX_FILES = 20;
+
 function unreachableMessage(label: string): string {
   return (
     `We couldn't reach the server to convert this ${label} file. ` +
@@ -47,19 +56,47 @@ export default function FileWorkbench() {
   // (the selected sheet, the scroll window) starts fresh per file instead of
   // being inherited from the file before it.
   const [openId, setOpenId] = useState(0);
+  /**
+   * Everything that arrived together, and which one is on screen.
+   *
+   * Only the selected file is ever parsed. Opening a dozen spreadsheets
+   * because a dozen were dropped would mean a dozen uploads for a person who
+   * wanted to look at one of them.
+   */
+  const [files, setFiles] = useState<File[]>([]);
+  const [activeFile, setActiveFile] = useState(0);
+  /** Set when a drop carried more files than the strip will show. */
+  const [droppedTooMany, setDroppedTooMany] = useState<string | null>(null);
+  const tabs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  /**
+   * Which open is the current one.
+   *
+   * Choosing another file while one is still loading used to be a race the
+   * slower parse could win, leaving the pane showing a document the strip says
+   * is not selected. Each call takes a ticket and drops its result if a later
+   * one has started since.
+   */
+  const openToken = useRef(0);
 
   const open = useCallback(async (file: File) => {
+    const token = openToken.current + 1;
+    openToken.current = token;
+    const current = () => openToken.current === token;
+
     setBusy(true);
     setError(null);
 
     // A failed open must not leave the previous file on screen, or the error
     // sits above a header naming a different document.
     const fail = (message: string) => {
+      if (!current()) return;
       setDocument(null);
       setError(message);
     };
 
     const succeed = (opened: PreviewDocument) => {
+      if (!current()) return;
       setDocument(opened);
       setOpenId((id) => id + 1);
     };
@@ -130,9 +167,34 @@ export default function FileWorkbench() {
           : "Something went wrong opening that file.",
       );
     } finally {
-      setBusy(false);
+      if (current()) setBusy(false);
     }
   }, []);
+
+  const openMany = useCallback(
+    async (incoming: File[]) => {
+      const kept = incoming.slice(0, MAX_FILES);
+      setFiles(kept);
+      setActiveFile(0);
+      setDroppedTooMany(
+        incoming.length > kept.length
+          ? `${incoming.length} files were dropped; showing the first ${kept.length}.`
+          : null,
+      );
+      if (kept[0]) await open(kept[0]);
+    },
+    [open],
+  );
+
+  const select = useCallback(
+    async (index: number) => {
+      const file = files[index];
+      if (!file) return;
+      setActiveFile(index);
+      await open(file);
+    },
+    [files, open],
+  );
 
   /*
    * A file the operating system handed over, because the app is installed and
@@ -147,15 +209,89 @@ export default function FileWorkbench() {
     const queue = (window as WindowWithLaunchQueue).launchQueue;
     if (!queue) return;
 
-    queue.setConsumer(async ({ files }) => {
-      const [handle] = files;
-      if (handle) await open(await handle.getFile());
+    queue.setConsumer(async ({ files: handles }) => {
+      // Selecting several files and choosing "open with" hands over all of
+      // them, so this is not a hypothetical plural.
+      const opened = await Promise.all(handles.map((handle) => handle.getFile()));
+      if (opened.length > 0) await openMany(opened);
     });
-  }, [open]);
+  }, [openMany]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <DropZone onFile={open} busy={busy} compact={document !== null} />
+      <DropZone
+        onFiles={openMany}
+        onNothingUsable={(reason) => {
+          setDocument(null);
+          setError(reason);
+        }}
+        busy={busy}
+        compact={document !== null}
+      />
+
+      {/*
+        The other files that came with this one.
+        
+        Shown only when there is a choice to make. A tablist because that is
+        what it is — one panel below, several things selecting it — and it
+        follows the sheet tabs in taking a single tab stop with arrow keys
+        inside, rather than putting twenty stops between the drop zone and the
+        document.
+      */}
+      {files.length > 1 && (
+        <div
+          role="tablist"
+          aria-label="Dropped files"
+          className="-mx-1 flex gap-1 overflow-x-auto px-1"
+          onKeyDown={(event) => {
+            const step =
+              event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+            let next = activeFile;
+            if (step !== 0) {
+              next = (activeFile + step + files.length) % files.length;
+            } else if (event.key === "Home") {
+              next = 0;
+            } else if (event.key === "End") {
+              next = files.length - 1;
+            } else {
+              return;
+            }
+            event.preventDefault();
+            tabs.current[next]?.focus();
+            void select(next);
+          }}
+        >
+          {files.map((candidate, index) => (
+            <button
+              key={`${candidate.name}-${index}`}
+              ref={(element) => {
+                tabs.current[index] = element;
+              }}
+              role="tab"
+              aria-selected={index === activeFile}
+              tabIndex={index === activeFile ? 0 : -1}
+              // Deliberately not disabled while a file is opening. The browser
+              // moves focus off a control that becomes disabled, so arrowing
+              // along the strip lost focus after the first move and the rest
+              // of the keys went nowhere. `open` guards the race instead.
+              title={candidate.name}
+              onClick={() => void select(index)}
+              className={[
+                "max-w-52 shrink-0 truncate rounded-lg border px-3 py-1.5 text-xs transition-colors",
+                index === activeFile
+                  ? "border-accent bg-accent/5 text-ink"
+                  : "border-line text-muted hover:text-ink",
+              ].join(" ")}
+            >
+              {candidate.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {droppedTooMany !== null && (
+        <p className="text-xs text-muted">{droppedTooMany}</p>
+      )}
 
       {error && (
         <p

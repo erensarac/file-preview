@@ -192,6 +192,56 @@ function buildPng(width: number, height: number): Buffer {
   ]);
 }
 
+/** The OLE compound file signature, which is what an encrypted OOXML wears. */
+const OLE_SIGNATURE = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
+
+function oleContainer(streamName: string | null): Buffer {
+  // A 512-byte header followed by one sector, which is enough to carry the
+  // signature and a directory-style name without pretending to be a valid
+  // compound file.
+  const buffer = Buffer.alloc(1024);
+  buffer.set(OLE_SIGNATURE, 0);
+  if (streamName) {
+    // Stream names live in the directory as UTF-16LE.
+    buffer.write(streamName, 512, "utf16le");
+  }
+  return buffer;
+}
+
+const buildLockedOffice = () => oleContainer("EncryptedPackage");
+const buildLegacyOle = () => oleContainer("Workbook");
+
+function buildLockedPdf(): Buffer {
+  const objects: string[] = [];
+  objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+  objects[2] = "<< /Type /Pages /Kids [3 0 R] /Count 1 >>";
+  objects[3] =
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R >>";
+  objects[4] = "<< /Length 0 >>\nstream\n\nendstream";
+  const filler = "A".repeat(64);
+  objects[5] =
+    `<< /Filter /Standard /V 1 /R 2 /O <${filler}> /U <${filler}> /P -1 >>`;
+
+  let pdf = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  for (let id = 1; id < objects.length; id += 1) {
+    offsets[id] = pdf.length;
+    pdf += `${id} 0 obj\n${objects[id]}\nendobj\n`;
+  }
+
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length}\n0000000000 65535 f \n`;
+  for (let id = 1; id < objects.length; id += 1) {
+    pdf += `${String(offsets[id]).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf +=
+    `trailer\n<< /Size ${objects.length} /Root 1 0 R /Encrypt 5 0 R ` +
+    `/ID [<${"A".repeat(32)}> <${"A".repeat(32)}>] >>\n` +
+    `startxref\n${xrefOffset}\n%%EOF\n`;
+
+  return Buffer.from(pdf, "latin1");
+}
+
 export async function buildFixtures(): Promise<void> {
   mkdirSync(FIXTURE_DIR, { recursive: true });
   const at = (name: string) => join(FIXTURE_DIR, name);
@@ -419,6 +469,35 @@ export async function buildFixtures(): Promise<void> {
   // Right extension, wrong contents — must be rejected on the signature
   // rather than reaching pdf.js and failing as an opaque worker error.
   writeFileSync(at("not-really.pdf"), "just some text, not a PDF\n");
+
+  /*
+   * A password-protected PDF.
+   *
+   * The standard security handler with arbitrary /O and /U strings: pdf.js
+   * tries the empty user password, fails to authenticate, and raises the same
+   * `PasswordException` a genuinely encrypted document raises. Nothing here is
+   * really encrypted — the point under test is the state, not the cipher.
+   */
+  writeFileSync(at("locked.pdf"), buildLockedPdf());
+
+  /*
+   * A password-protected Office file.
+   *
+   * Synthetic, and worth knowing that: `exceljs` cannot write an encrypted
+   * workbook, so this carries the two markers a real one carries rather than
+   * being one. An encrypted OOXML file is an OLE compound file — not a zip —
+   * whose directory holds a stream called `EncryptedPackage`, and those are
+   * exactly what the detector keys on.
+   */
+  writeFileSync(at("locked.xlsx"), buildLockedOffice());
+
+  // An OLE file with no encrypted stream: a genuine pre-2007 .xls wearing the
+  // wrong extension. It must NOT be reported as password-protected.
+  writeFileSync(at("legacy.xlsx"), buildLegacyOle());
+
+  // Neither a zip nor an OLE file. The plain "we couldn't read it" case, which
+  // has to stay distinct from the locked one.
+  writeFileSync(at("broken.xlsx"), "this is not a spreadsheet at all\n");
 
   // Word carries hyperlinks as relationships, so a relative one has to be
   // built through that machinery to exercise the same path a real file would.

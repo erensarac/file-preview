@@ -330,6 +330,16 @@ scroll regions are focusable so they can be scrolled without a pointer.
   take a numeric suffix in document order, and letters are matched by Unicode
   property rather than `a-z` — "Şubat Özeti" becomes `şubat-özeti` instead of
   collapsing to nothing.
+- A password-protected file is identified before any parser runs and told apart
+  from a broken one. They are different problems: a corrupt file is nothing the
+  user can act on, while a locked file is *fine* and they very likely know the
+  password — telling them it might be corrupt sends them away from something
+  they could have fixed in seconds. An encrypted Office file is not a zip at
+  all but an OLE compound file holding an `EncryptedPackage` stream, so both
+  markers are required; the signature alone would also match a genuine
+  pre-2007 `.xls` wearing the wrong extension, which falls through to the
+  ordinary message instead. The message says why there is no password box: for
+  Excel and Word it would have to travel to the server with the file.
 - The server action re-detects the format and re-checks the size; the filename
   and MIME type from the client are treated as untrusted.
 - Parser errors are logged server-side and replaced with a generic message,

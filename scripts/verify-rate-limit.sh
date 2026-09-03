@@ -39,6 +39,10 @@ TELEMETRY_LIMIT="${3:-100}"
 
 # The window every Vercel rate-limit rule is configured over here. The recovery
 # check waits it out, so it has to match the rule or the wait proves nothing.
+# Read off the rule in the dashboard, not chosen here. Step 4 sleeps this out
+# to prove the limit lifts, so a mismatch is silent and wrong in the worrying
+# direction: against a 300s rule this waits 70 seconds, sees the refusal that
+# is still correct, and reports a permanent block that does not exist.
 WINDOW_SECONDS=60
 
 failures=0
@@ -85,6 +89,9 @@ burst() {
 # Prints "200 x37, 403 x8" — the shape of a run in one line, so a log that is
 # read six months from now still says what happened.
 tally() { sort | uniq -c | sort -rn | awk '{printf "%s x%s, ", $2, $1}' | sed 's/, $//'; }
+# `|| true` because `grep -c` exits 1 on a count of zero. Under `pipefail`
+# that would abort the run at exactly the moment there is a legitimate zero to
+# report — nothing refused, which is a finding rather than an error.
 count_of() { grep -c "^$1\$" || true; }
 
 printf '\nVerifying rate limits on %s\n' "$BASE"
@@ -125,13 +132,23 @@ fi
 # absent and something else refusing. The response itself is the only place
 # that difference is visible.
 printf '\n3. The refusal comes from the firewall, not from the application\n'
-headers=$(curl -sS -D- -o /tmp/ratelimit-body --max-time 20 -X POST \
+# `mktemp` rather than a fixed path: if the request writes nothing — refused
+# connection, timeout — a fixed path is still read, and the step reports on
+# whatever a previous run left there. That fails open, which is the one
+# direction a check must not fail.
+body=$(mktemp)
+trap 'rm -f "$body"' EXIT
+headers=$(curl -sS -D- -o "$body" --max-time 20 -X POST \
   -H 'Content-Type: multipart/form-data; boundary=----x' \
   --data-binary "$MULTIPART" "$BASE/" 2>/dev/null || true)
 printf '%s\n' "$headers" | grep -iE '^(HTTP/|x-vercel|retry-after|server|cache-control)' | sed 's/^/   /'
 
 if printf '%s\n' "$headers" | grep -qi '^HTTP/[0-9.]* 403'; then
-  if grep -qi 'drop-zone\|Drop a file' /tmp/ratelimit-body 2>/dev/null; then
+  # The test id, not the visible copy. "Drop a file here" is one rewording
+  # away from never matching again, and not matching is the branch that
+  # passes — so a copy edit would quietly turn this into a check that always
+  # agrees with us.
+  if grep -q 'data-testid="drop-zone"' "$body"; then
     fail 'the 403 body is our own page — this is the app answering, not the firewall'
   else
     pass 'refused before the application was reached'

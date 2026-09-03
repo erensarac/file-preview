@@ -32,7 +32,15 @@ export type Preview =
    * document in memory to show the first screen of it — so the viewer keeps
    * the bytes and renders pages as they are scrolled to.
    */
-  | { kind: "pdf"; bytes: Uint8Array };
+  | { kind: "pdf"; bytes: Uint8Array }
+  /**
+   * An image, carried as its source for the same reason PDF is: the browser
+   * is the decoder. The viewer wraps these bytes in a blob URL and releases it
+   * again when the pane is replaced — keeping the bytes rather than the URL
+   * puts creating and revoking it in one place, which is what stops a leak
+   * per opened file.
+   */
+  | { kind: "image"; bytes: Uint8Array; mimeType: string };
 
 export interface PreviewMeta {
   name: string;

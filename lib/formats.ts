@@ -18,6 +18,7 @@ export type FormatId =
   | "json"
   | "text"
   | "pdf"
+  | "image"
   | "xlsx"
   | "docx";
 
@@ -172,8 +173,7 @@ export const FORMATS: readonly FormatSpec[] = [
       "sql",
       "styl",
       "svelte",
-      "svg",
-      "swift",
+            "swift",
       "tex",
       "text",
       "tf",
@@ -201,6 +201,37 @@ export const FORMATS: readonly FormatSpec[] = [
     mimeTypes: ["application/pdf"],
     // Rendered by pdf.js in the tab, so it neither uploads nor runs into the
     // deployment's request body ceiling.
+    runtime: "client",
+    maxBytes: 30 * MB,
+  },
+  {
+    id: "image",
+    label: "Image",
+    /*
+     * SVG is here alongside the bitmaps deliberately, and it is only safe
+     * because of how the viewer renders it. An SVG is a document, not a
+     * picture: it can carry script and reference remote resources. Loaded
+     * through an `<img>` element the browser renders it in secure static
+     * mode — no script, no external fetches — which is exactly what this
+     * viewer does. It must never be inlined into the page instead.
+     *
+     * HEIC is deliberately absent. No browser can decode it, so supporting it
+     * would mean shipping a WebAssembly decoder to open a holiday photo —
+     * the sort of weight the client runtime exists to avoid. It stays an
+     * honest "we can't open this" until that trade changes.
+     */
+    extensions: ["png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "bmp"],
+    mimeTypes: [
+      "image/png",
+      "image/jpeg",
+      "image/gif",
+      "image/webp",
+      "image/avif",
+      "image/svg+xml",
+      "image/bmp",
+    ],
+    // Decoded by the browser itself, so it never leaves the device and the
+    // deployment's body ceiling does not apply.
     runtime: "client",
     maxBytes: 30 * MB,
   },

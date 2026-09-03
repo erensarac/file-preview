@@ -75,6 +75,13 @@ for (const colorScheme of ["light", "dark"] as const) {
     expect(await violations(page)).toEqual([]);
   });
 
+  test("with an image open", async ({ page }) => {
+    await page.goto("/");
+    await page.setInputFiles('input[type="file"]', fixture("picture.png"));
+    await expect(page.getByTestId("image-preview")).toBeVisible();
+    expect(await violations(page)).toEqual([]);
+  });
+
   test("on a format landing page", async ({ page }) => {
     await page.goto("/excel-viewer");
     await expect(
@@ -217,6 +224,13 @@ for (const colorScheme of ["light", "dark"] as const) {
       await expect(
         page.locator('[data-testid="pdf-page-1"][data-rendered="true"]'),
       ).toBeVisible({ timeout: 30_000 });
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test("with an image open", async ({ page }) => {
+      await page.goto("/");
+      await page.setInputFiles('input[type="file"]', fixture("picture.png"));
+      await expect(page.getByTestId("image-preview")).toBeVisible();
       expect(await violations(page)).toEqual([]);
     });
   });

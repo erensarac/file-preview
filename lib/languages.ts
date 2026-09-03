@@ -157,7 +157,6 @@ const EXTENSION_TO_GRAMMAR: Record<string, string> = {
   sql: "sql",
   styl: "css",
   svelte: "svelte",
-  svg: "xml",
   swift: "swift",
   tex: "latex",
   tf: "terraform",

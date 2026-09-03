@@ -84,6 +84,46 @@ The **legacy** build is used deliberately: the default one calls
 `Map.prototype.getOrInsertComputed`, which is new enough that rendering throws
 on browsers still in common use.
 
+## Images
+
+Decoded by the browser, so an image never leaves the device and the body limit
+does not apply. The bytes are carried to the viewer the way a PDF's are, and
+wrapped in a blob URL there — one owner creating it and releasing it, because
+the pane is remounted per file and a URL left behind holds its bytes for the
+life of the tab. A spec fetches the old URL after opening another file and
+requires it to fail.
+
+Zoom is the PDF viewer's, from `lib/zoom.ts`: the same steps, the same fit rule
+that never magnifies, the same `Fit` control. Someone who has zoomed a PDF here
+should not have to learn a second set of controls.
+
+**SVG is accepted, and only because of how it is rendered.** An SVG is a
+document rather than a picture: it can carry script and reference remote
+resources. Loaded through an `<img>` element the browser renders it in secure
+static mode — no script runs, no external resource is fetched — which is what
+makes it safe. It must never be inlined into the page instead. A fixture
+carrying both a `<script>` and a remote `<image href>` pins that: neither fires.
+
+That does mean `.svg` now opens as a picture rather than as highlighted XML
+source, which is what it used to do. A file previewer showing a picture is the
+likelier intent, so the extension moved from the text format to this one.
+
+**HEIC is deliberately still unsupported.** No browser can decode it, so
+supporting it would mean shipping a WebAssembly decoder to open a holiday
+photo — the weight the client runtime exists to avoid. It stays an honest
+"we can't open this".
+
+There is no signature check. The equivalent of the PDF one would be a table of
+magic bytes for eight formats that can only ever reject things, and the browser
+already gives a definitive answer when it tries to decode — a file that is not
+really a PNG fails there, along with every corrupt file, and the viewer says so
+in one place.
+
+`alt` is empty, on purpose. There is nothing true to say about an arbitrary
+image someone has just opened, and a description invented here would be read as
+fact by a screen reader. The region announces that this is an image and the
+pane header names the file, which is everything actually known about it.
+
 ## Syntax highlighting
 
 Source files are coloured with Shiki, in the browser — a file is not uploaded
@@ -120,9 +160,10 @@ recognised fence never loads the highlighter at all.
 2. Add a parser to `lib/adapters/client.ts` or `lib/adapters/server.ts`, keyed by
    the new id, returning one of the existing `Preview` shapes.
 
-That's it — detection, routing, the drop zone chips, size limits and the viewer
-all follow from the registry. Only a genuinely new *kind* of content — an image,
-say — needs a new `Preview` variant and viewer, as PDF did.
+That's it — detection, routing, the drop zone chips, size limits, the file
+handlers the installed app registers with the operating system, and the viewer
+all follow from the registry. Only a genuinely new *kind* of content needs a
+new `Preview` variant and viewer, as PDF and images did.
 
 ## Landing pages
 

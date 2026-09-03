@@ -18,7 +18,9 @@ async function openPdf(page: Page, name = "report.pdf") {
 test("renders the first page and reports the page count", async ({ page }) => {
   await openPdf(page);
 
-  await expect(page.getByTestId("pdf-page-count")).toHaveText("12 pages");
+  // The count now sits beside the box you type a page number into.
+  await expect(page.getByTestId("pdf-page-count")).toHaveText("of 12");
+  await expect(page.getByTestId("pdf-page-input")).toHaveValue("1");
   await expect(rendered(page, 1)).toBeVisible();
   // A canvas with content, not an empty element sized like one.
   const painted = await page
@@ -151,5 +153,147 @@ test.describe("the text layer", () => {
     // Same rule as the canvases: a hundred-page document should not hold a
     // hundred layers to show one screen.
     await expect(page.getByTestId("pdf-text-12")).toHaveCount(0);
+  });
+});
+
+/**
+ * Pages of different sizes in one document.
+ *
+ * Every page used to be assumed to be the size of page 1, while its canvas was
+ * rasterised from its own viewport — so a landscape page was drawn landscape
+ * and displayed in a portrait box, squashed. Nothing errored; it just looked
+ * like a bad export of the file.
+ */
+test.describe("a document with mixed page sizes", () => {
+  const boxOf = (page: Page, pageNumber: number) =>
+    page
+      .getByTestId(`pdf-page-${pageNumber}`)
+      .evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const canvas = element.querySelector("canvas");
+        const painted = canvas?.getBoundingClientRect();
+        return {
+          width: Math.round(box.width),
+          height: Math.round(box.height),
+          canvasWidth: painted ? Math.round(painted.width) : null,
+          canvasHeight: painted ? Math.round(painted.height) : null,
+        };
+      });
+
+  test("a landscape page keeps its own shape", async ({ page }) => {
+    await openPdf(page, "mixed-sizes.pdf");
+    await expect(rendered(page, 2)).toBeVisible({ timeout: 30_000 });
+
+    const portrait = await boxOf(page, 1);
+    const landscape = await boxOf(page, 2);
+
+    expect(portrait.height).toBeGreaterThan(portrait.width);
+    // The whole bug in one assertion: this used to be a portrait box.
+    expect(landscape.width).toBeGreaterThan(landscape.height);
+
+    // And the box has to match the bitmap inside it, or the page is stretched
+    // rather than merely mis-sized.
+    expect(landscape.canvasWidth).toBe(landscape.width);
+    expect(landscape.canvasHeight).toBe(landscape.height);
+  });
+
+  test("its text layer still sits over its glyphs", async ({ page }) => {
+    await openPdf(page, "mixed-sizes.pdf");
+    await expect(rendered(page, 2)).toBeVisible({ timeout: 30_000 });
+
+    // The layer is positioned from the real page while its container was
+    // sized from page 1, so on this page the two disagreed.
+    const span = page.getByTestId("pdf-text-2").locator("span").first();
+    await expect(span).toHaveText(/Landscape two/);
+
+    const drift = await page
+      .getByTestId("pdf-page-2")
+      .evaluate((element) => {
+        const layer = element.querySelector('[data-testid="pdf-text-2"] span');
+        const page2 = element.getBoundingClientRect();
+        const text = layer!.getBoundingClientRect();
+        return {
+          fromLeft: text.left - page2.left,
+          fromTop: text.top - page2.top,
+          within: text.right <= page2.right + 1,
+        };
+      });
+
+    // The content stream puts the text 60pt in and 102pt down.
+    expect(drift.fromLeft).toBeGreaterThan(40);
+    expect(drift.fromLeft).toBeLessThan(90);
+    expect(drift.fromTop).toBeGreaterThan(50);
+    expect(drift.fromTop).toBeLessThan(130);
+    expect(drift.within, "the text layer overflows its page").toBe(true);
+  });
+
+  test("scrolling lands on the right page", async ({ page }) => {
+    await openPdf(page, "mixed-sizes.pdf");
+    await expect(rendered(page, 1)).toBeVisible({ timeout: 30_000 });
+
+    // Page 3 sits below a portrait and a landscape page. Working out where it
+    // starts by multiplying one page height gets this wrong.
+    await page.getByTestId("pdf-page-input").fill("3");
+    await page.getByTestId("pdf-page-input").press("Enter");
+
+    await expect(rendered(page, 3)).toBeVisible();
+    await expect.poll(() => page.getByTestId("pdf-page-input").inputValue()).toBe("3");
+  });
+});
+
+/**
+ * Reaching a page without dragging. In a long document the scrollbar is the
+ * only way there, and it is a poor one.
+ */
+test.describe("going to a page", () => {
+  test("typing a number scrolls to it", async ({ page }) => {
+    await openPdf(page);
+    await expect(rendered(page, 1)).toBeVisible();
+
+    await page.getByTestId("pdf-page-input").fill("9");
+    await page.getByTestId("pdf-page-input").press("Enter");
+
+    await expect(rendered(page, 9)).toBeVisible();
+    // Landed at the top of page 9 rather than merely somewhere near it.
+    const offset = await page
+      .getByTestId("pdf-page-9")
+      .evaluate((element) => {
+        const scroller = element.closest(".viewer-scroller")!;
+        return (
+          element.getBoundingClientRect().top -
+          scroller.getBoundingClientRect().top
+        );
+      });
+    expect(Math.abs(offset)).toBeLessThan(20);
+  });
+
+  test("the box follows the scroll", async ({ page }) => {
+    await openPdf(page);
+    await expect(rendered(page, 1)).toBeVisible();
+    await expect(page.getByTestId("pdf-page-input")).toHaveValue("1");
+
+    await page
+      .getByTestId("pdf-page-1")
+      .evaluate((element) =>
+        element.closest(".viewer-scroller")!.scrollTo({ top: 100_000 }),
+      );
+
+    // Whatever the last page turns out to be, the box must not still say 1.
+    await expect
+      .poll(() => page.getByTestId("pdf-page-input").inputValue())
+      .not.toBe("1");
+  });
+
+  test("a number outside the document is clamped, not obeyed", async ({
+    page,
+  }) => {
+    await openPdf(page);
+    await expect(rendered(page, 1)).toBeVisible();
+
+    await page.getByTestId("pdf-page-input").fill("999");
+    await page.getByTestId("pdf-page-input").press("Enter");
+
+    await expect(page.getByTestId("pdf-page-input")).toHaveValue("12");
+    await expect(rendered(page, 12)).toBeVisible();
   });
 });

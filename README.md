@@ -66,6 +66,20 @@ canvas's zoom × device-pixel-ratio backing scale. Mixing the two puts the
 selection boxes at a fraction of the glyphs they belong to, which is invisible
 until someone tries to select something.
 
+Page positions are accumulated rather than multiplied. Every page was once
+assumed to be the size of page 1 — which is what a viewer needs before it can
+size the scroll region without parsing the whole document — while each canvas
+was rasterised from its own viewport. A landscape page inside a portrait
+report was therefore drawn landscape and displayed in a portrait box, squashed,
+with its text layer sliding off its glyphs. Page 1's size is still the estimate,
+but each page reports its real one as it comes into view and the layout
+corrects itself; a correction above the viewport is compensated in the scroll
+position so nothing jumps under the reader.
+
+That arithmetic is also what the page box in the toolbar uses: typing a number
+scrolls to where that page actually starts, which in a mixed-size document is
+not a multiple of anything.
+
 The **legacy** build is used deliberately: the default one calls
 `Map.prototype.getOrInsertComputed`, which is new enough that rendering throws
 on browsers still in common use.

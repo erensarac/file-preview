@@ -79,23 +79,32 @@ ${paragraphs}
  * have to be computed from the real bytes, which is the part a hand-written
  * fixture usually gets wrong.
  */
-function buildPdf(pageTexts: string[]): Buffer {
+interface PdfPageSpec {
+  text: string;
+  /** A4 portrait unless a page says otherwise. */
+  width?: number;
+  height?: number;
+}
+
+function buildPdf(pages: PdfPageSpec[]): Buffer {
   const objects: string[] = [];
-  const pageIds = pageTexts.map((_, index) => 4 + index * 2);
+  const pageIds = pages.map((_, index) => 4 + index * 2);
 
   objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
   objects[2] =
     `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}]` +
-    ` /Count ${pageTexts.length} >>`;
+    ` /Count ${pages.length} >>`;
   objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
 
-  pageTexts.forEach((text, index) => {
+  pages.forEach((page, index) => {
+    const width = page.width ?? 595;
+    const height = page.height ?? 842;
     const pageId = pageIds[index]!;
     const contentId = pageId + 1;
     objects[pageId] =
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842]` +
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}]` +
       ` /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentId} 0 R >>`;
-    const stream = `BT /F1 32 Tf 60 740 Td (${text}) Tj ET`;
+    const stream = `BT /F1 32 Tf 60 ${height - 102} Td (${page.text}) Tj ET`;
     objects[contentId] =
       `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
   });
@@ -296,8 +305,24 @@ export async function buildFixtures(): Promise<void> {
   writeFileSync(
     at("report.pdf"),
     buildPdf(
-      Array.from({ length: 12 }, (_, index) => `Page ${index + 1} of 12`),
+      Array.from({ length: 12 }, (_, index) => ({
+        text: `Page ${index + 1} of 12`,
+      })),
     ),
+  );
+
+  /*
+   * Pages of different sizes in one document — a landscape chart between two
+   * portrait pages, which is a routine shape for a report and was rendered
+   * squashed because every page was assumed to match page 1.
+   */
+  writeFileSync(
+    at("mixed-sizes.pdf"),
+    buildPdf([
+      { text: "Portrait one" },
+      { text: "Landscape two", width: 842, height: 595 },
+      { text: "Portrait three" },
+    ]),
   );
 
   // Right extension, wrong contents — must be rejected on the signature

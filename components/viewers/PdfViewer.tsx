@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 /**
  * PDF pages, rendered as they come into view.
@@ -21,6 +28,25 @@ const OVERSCAN = 1;
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 /** Matches the scroller's `p-2`; the fit maths has to subtract it. */
 const SCROLLER_PADDING = 8;
+/** Matches the `gap-4` between pages; the offset maths has to include it. */
+const PAGE_GAP = 16;
+
+/**
+ * Where each page starts, and how tall the stack is.
+ *
+ * Accumulated rather than multiplied. Dividing the scroll position by one page
+ * height assumes every page is identical, which is what made a landscape page
+ * inside a portrait document land on the wrong page and render squashed.
+ */
+function layoutOf(sizes: PageSize[], zoom: number) {
+  const offsets: number[] = [];
+  let y = 0;
+  for (const size of sizes) {
+    offsets.push(y);
+    y += size.height * zoom + PAGE_GAP;
+  }
+  return { offsets, total: Math.max(0, y - PAGE_GAP) };
+}
 
 type LoadingTask = ReturnType<
   typeof import("pdfjs-dist/legacy/build/pdf.mjs").getDocument
@@ -42,7 +68,21 @@ export default function PdfViewer({ bytes }: { bytes: Uint8Array }) {
   const [chosenZoom, setChosenZoom] = useState<number | null>(null);
   const [available, setAvailable] = useState(0);
   const [visible, setVisible] = useState({ from: 0, to: 2 });
+  const [currentPage, setCurrentPage] = useState(1);
+  /** What the user is typing into the page box, or `null` when they are not. */
+  const [pageDraft, setPageDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  /*
+   * Read by `measurePage`, which is called from a child's effect rather than
+   * during render, so it needs the current values without taking them as
+   * dependencies — a dependency on `sizes` would rebuild the callback on every
+   * correction and re-run every page's effect with it.
+   */
+  const sizesRef = useRef<PageSize[]>([]);
+  const zoomRef = useRef(1);
+  /** A height correction above the viewport, applied after the DOM has it. */
+  const pendingScroll = useRef(0);
 
   const pageWidth = sizes[0]?.width ?? 0;
   /**
@@ -95,14 +135,24 @@ export default function PdfViewer({ bytes }: { bytes: Uint8Array }) {
         const loaded = await task.promise;
         if (cancelled) return;
 
+        /*
+         * Page 1's size, used as the estimate for every page until that page
+         * is itself fetched and reports its own.
+         *
+         * Measuring all of them up front would mean parsing a whole document
+         * to paint the first screen. Most documents are uniform, so the
+         * estimate is right nearly always and the correction is invisible;
+         * where it is wrong — a landscape chart in a portrait report — the
+         * page corrects itself as it comes into view.
+         */
         const first = await loaded.getPage(1);
         const viewport = first.getViewport({ scale: 1 });
-        setSizes(
-          Array.from({ length: loaded.numPages }, () => ({
-            width: viewport.width,
-            height: viewport.height,
-          })),
-        );
+        const estimate = Array.from({ length: loaded.numPages }, () => ({
+          width: viewport.width,
+          height: viewport.height,
+        }));
+        sizesRef.current = estimate;
+        setSizes(estimate);
         setDoc(loaded);
       } catch (cause) {
         if (!cancelled) {
@@ -136,20 +186,100 @@ export default function PdfViewer({ bytes }: { bytes: Uint8Array }) {
     return () => observer.disconnect();
   }, [doc]);
 
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  const layout = useMemo(() => layoutOf(sizes, zoom), [sizes, zoom]);
+
+  /**
+   * A page reporting the size it actually is, once it has been fetched.
+   *
+   * Called from the page's own effect, so it runs after render and can touch
+   * refs freely. A page whose estimate was already right reports the same
+   * numbers and nothing changes, which is what stops this from looping.
+   */
+  const measurePage = useCallback((pageNumber: number, real: PageSize) => {
+    const current = sizesRef.current;
+    const index = pageNumber - 1;
+    const existing = current[index];
+    if (!existing) return;
+    if (existing.width === real.width && existing.height === real.height) {
+      return;
+    }
+
+    /*
+     * Correcting a page *above* the viewport moves everything below it,
+     * including whatever the reader is looking at. The difference is banked
+     * here and applied once the DOM has the new height.
+     */
+    const element = scroller.current;
+    if (element) {
+      const { offsets } = layoutOf(current, zoomRef.current);
+      if ((offsets[index] ?? 0) < element.scrollTop) {
+        pendingScroll.current +=
+          (real.height - existing.height) * zoomRef.current;
+      }
+    }
+
+    const next = [...current];
+    next[index] = real;
+    sizesRef.current = next;
+    setSizes(next);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (pendingScroll.current === 0) return;
+    const element = scroller.current;
+    if (element) element.scrollTop += pendingScroll.current;
+    pendingScroll.current = 0;
+  }, [sizes]);
+
   const recompute = useCallback(() => {
     const element = scroller.current;
-    if (!element || sizes.length === 0) return;
+    const { offsets } = layout;
+    if (!element || offsets.length === 0) return;
 
-    const pageHeight = sizes[0]!.height * zoom + 16;
-    const from = Math.max(
-      0,
-      Math.floor(element.scrollTop / pageHeight) - OVERSCAN,
-    );
-    const count = Math.ceil(element.clientHeight / pageHeight);
-    setVisible({ from, to: from + count + OVERSCAN * 2 });
-  }, [sizes, zoom]);
+    const top = element.scrollTop;
+    const bottom = top + element.clientHeight;
+
+    // Walked rather than divided: page heights are not necessarily equal.
+    let first = 0;
+    while (first + 1 < offsets.length && offsets[first + 1]! <= top) {
+      first += 1;
+    }
+    let last = first;
+    while (last + 1 < offsets.length && offsets[last + 1]! < bottom) {
+      last += 1;
+    }
+
+    setVisible({ from: Math.max(0, first - OVERSCAN), to: last + OVERSCAN });
+    setCurrentPage(first + 1);
+  }, [layout]);
 
   useEffect(recompute, [recompute]);
+
+  /** Scrolls a page to the top of the viewport. */
+  const goToPage = useCallback(
+    (pageNumber: number) => {
+      const element = scroller.current;
+      const { offsets } = layout;
+      if (!element || offsets.length === 0) return;
+
+      const clamped = Math.min(Math.max(1, pageNumber), offsets.length);
+      element.scrollTo({ top: offsets[clamped - 1]! });
+      setCurrentPage(clamped);
+    },
+    [layout],
+  );
+
+  /** Commits whatever is in the page box, or puts back the current page. */
+  const commitPageDraft = useCallback(() => {
+    if (pageDraft === null) return;
+    const parsed = Number.parseInt(pageDraft, 10);
+    if (Number.isFinite(parsed)) goToPage(parsed);
+    setPageDraft(null);
+  }, [pageDraft, goToPage]);
 
   // A fitted zoom is rarely one of the steps, so "next" and "previous" are
   // found by value. `null` means there is nothing further in that direction.
@@ -173,10 +303,41 @@ export default function PdfViewer({ bytes }: { bytes: Uint8Array }) {
 
   return (
     <div className="flex min-h-0 flex-col">
-      <div className="flex items-center gap-3 border-b border-line px-4 py-2 text-xs text-muted">
-        <span data-testid="pdf-page-count">
-          {doc.numPages} {doc.numPages === 1 ? "page" : "pages"}
-        </span>
+      {/*
+        `flex-wrap` because this row is the densest thing on a narrow screen:
+        a page box, a zoom readout and four buttons. It wraps rather than
+        squeezing the controls below a usable tap target.
+      */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-2 text-xs text-muted">
+        {/*
+          A box you can type into rather than a label you cannot: scrolling to
+          page 9 of a 12-page document was previously only possible by
+          dragging, and in a long one that is a lot of dragging.
+        */}
+        <label className="flex items-center gap-1.5">
+          <span className="sr-only">Go to page</span>
+          <input
+            type="number"
+            min={1}
+            max={doc.numPages}
+            data-testid="pdf-page-input"
+            // Shows where you are while scrolling, and what you are typing
+            // while typing — the draft wins until it is committed.
+            value={pageDraft ?? String(currentPage)}
+            onChange={(event) => setPageDraft(event.target.value)}
+            onBlur={commitPageDraft}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                commitPageDraft();
+                event.currentTarget.blur();
+              }
+              if (event.key === "Escape") setPageDraft(null);
+            }}
+            className="w-12 rounded border border-line bg-surface px-1.5 py-1 text-center tabular-nums text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+          />
+          <span data-testid="pdf-page-count">of {doc.numPages}</span>
+        </label>
         <div className="ml-auto flex items-center gap-1">
           {/*
             Steps are taken relative to the zoom in effect rather than to an
@@ -243,6 +404,7 @@ export default function PdfViewer({ bytes }: { bytes: Uint8Array }) {
               pageNumber={index + 1}
               zoom={zoom}
               size={size}
+              onMeasure={measurePage}
               // Outside this window the canvas is dropped and the placeholder
               // holds the scroll position.
               active={index >= visible.from && index <= visible.to}
@@ -267,12 +429,14 @@ function PdfPage({
   zoom,
   size,
   active,
+  onMeasure,
 }: {
   doc: PdfDocument;
   pageNumber: number;
   zoom: number;
   size: PageSize;
   active: boolean;
+  onMeasure: (pageNumber: number, size: PageSize) => void;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const textLayer = useRef<HTMLDivElement>(null);
@@ -291,6 +455,18 @@ function PdfPage({
     (async () => {
       const page = await doc.getPage(pageNumber);
       if (cancelled) return;
+
+      /*
+       * The size this page actually is, which until now was assumed to match
+       * page 1. The canvas below is rasterised from this page's own viewport,
+       * so a page whose estimate is wrong is drawn at one aspect ratio and
+       * displayed at another — a landscape page squashed into a portrait box.
+       */
+      const natural = page.getViewport({ scale: 1 });
+      onMeasure(pageNumber, {
+        width: natural.width,
+        height: natural.height,
+      });
 
       const element = canvas.current;
       if (!element) return;
@@ -347,7 +523,7 @@ function PdfPage({
       task?.cancel();
       text?.cancel();
     };
-  }, [doc, pageNumber, zoom, size, active]);
+  }, [doc, pageNumber, zoom, size, active, onMeasure]);
 
   return (
     <div

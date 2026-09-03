@@ -127,6 +127,22 @@ landing page names a format the registry knows, so they cannot drift.
 domain over the per-deployment hostname, so previews do not claim to be
 canonical.
 
+Each page also has its own link preview card, generated at build time by
+`app/[viewer]/opengraph-image.tsx` from the same landing entry the page uses,
+so `/excel-viewer` unfurls into a card that says Excel rather than one generic
+image for all six. The second line comes from the format's `runtime`: an Excel
+card says it is converted on the server, a PDF card says it is not — the
+distinction the pages exist to make. `lib/og-card.tsx` holds the layout once,
+because six cards drifting apart is how a set of pages stops looking like one
+product.
+
+The images are generated rather than committed so the wordmark and the palette
+cannot drift from the site's own. They carry no `fontWeight`: satori's built-in
+font ships a single weight, so declaring one renders identically and only
+implies an effect it does not have — the hierarchy is size and colour. A real
+bold would mean committing a font file, which is a lot of weight for a link
+preview.
+
 ## What is remembered
 
 Column widths, per sheet, for as long as the file is open. Widen a column, look

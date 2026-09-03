@@ -1,0 +1,16 @@
+<!--
+  The tab icon.
+
+  A page with a folded corner, solid rather than outlined: at 16px an outline
+  collapses into a grey smudge, and the point of a favicon is to be findable in
+  a strip of twenty tabs. The accent is the same one the site uses, so the tab
+  and the page agree.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="7" fill="#b4531f" />
+  <path
+    d="M11 7h7.2L23 11.8V25H11z"
+    fill="#ffffff"
+  />
+  <path d="M18 7v5h5z" fill="#f0c4a8" />
+</svg>

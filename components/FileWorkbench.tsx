@@ -50,6 +50,48 @@ function unreachableMessage(label: string): string {
   );
 }
 
+function rateLimitedMessage(label: string): string {
+  return (
+    `Too many files in quick succession, so the server is turning ` +
+    `requests away for a moment. Wait a minute and open this ${label} file ` +
+    `again. Files read in your browser — CSV, Markdown, JSON, PDF and text — ` +
+    `are unaffected.`
+  );
+}
+
+/**
+ * Which of the two an upload failure was.
+ *
+ * The rate limit lives in the platform's firewall, which refuses the request
+ * before it reaches the application — so nothing on the server can tell us
+ * this happened, and the action's rejection looks exactly like the network
+ * being gone. The status code is the only place the difference exists, and a
+ * server action's rejection does not carry it.
+ *
+ * So the failure path asks, with one request of the same shape the rule
+ * matches. A refusal answers 403; an ordinary POST to a page path answers 405,
+ * because the page is not an endpoint. Two codes, unambiguous, and the app
+ * itself needs no new route to answer with.
+ *
+ * It costs one request, only after an upload has already failed. If the
+ * network is what failed, this rejects without reaching anyone. If the limit
+ * is what failed, the budget it spends is already spent.
+ */
+async function refusedByRateLimit(): Promise<boolean> {
+  try {
+    const response = await fetch(window.location.pathname, {
+      method: "POST",
+      headers: { "content-type": "text/plain;charset=UTF-8" },
+      body: "",
+      cache: "no-store",
+    });
+    return response.status === 403;
+  } catch {
+    // No answer at all is the offline case, which is the other message.
+    return false;
+  }
+}
+
 export default function FileWorkbench() {
   const [document, setDocument] = useState<PreviewDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -172,7 +214,15 @@ export default function FileWorkbench() {
       try {
         result = await previewFile(formData);
       } catch {
-        fail(unreachableMessage(spec.label));
+        // Which failure this was is not knowable from the rejection, so it is
+        // asked rather than guessed. "Too fast" and "no connection" call for
+        // opposite things from the person holding the file: one means wait a
+        // moment, the other means the file needs a format that opens locally.
+        fail(
+          (await refusedByRateLimit())
+            ? rateLimitedMessage(spec.label)
+            : unreachableMessage(spec.label),
+        );
         return;
       }
 

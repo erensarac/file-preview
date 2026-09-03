@@ -390,7 +390,32 @@ there — including lines that impersonate other entries.
   anything. Real fixtures peak around 9x; the limit is 200x.
 - `lib/concurrency.ts` caps concurrent parses per instance and sheds the excess
   rather than queueing it. This protects one instance under load; it is not
-  rate limiting, which needs a shared store and belongs at the edge.
+  rate limiting, because the counter lives in one process — more instances
+  simply means proportionally more concurrent parses.
+- **Rate limiting is enforced at the edge, not in this codebase.** A firewall
+  rule on the deployment refuses more than **30 POST requests per minute from
+  one IP address**, before the request reaches any code here. That covers both
+  things a caller can reach: uploading a file, and reporting a client-side
+  failure.
+
+  They share one counter, which is not the design this deserves — a conversion
+  is expensive and rare, a failure report is cheap and bursty, and one number
+  is wrong for one of them. The account's plan allows a single custom rule, and
+  a shared limit was judged better than leaving the second endpoint open. The
+  counter is keyed by IP, so a burst of failure reports can only spend the same
+  client's own upload budget, never anyone else's.
+
+  Nothing in this repository configures the rule and no test can reach it: the
+  suite drives a local server the firewall never sees. It is verified against
+  the deployment by `scripts/verify-rate-limit.sh`, or from the **Verify
+  deployment** workflow, which asserts that a burst is refused, that ordinary
+  browsing is not, and that the refusal lifts when the window passes.
+
+  Because the refusal happens in front of the application, the server cannot
+  report it — the browser sees a rejected request that is indistinguishable
+  from having no network. `components/FileWorkbench.tsx` tells the two apart
+  by asking for a status directly, so a refused upload says to wait a minute
+  rather than blaming the connection.
 - Office parsing runs in a **process of its own** (`lib/parse-runner.ts`) with
   two budgets it cannot exceed: 8 s of wall clock and 256 MB of heap. A
   document that runs away is stopped rather than abandoned, and the user is

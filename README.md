@@ -139,14 +139,31 @@ Source files are coloured with Shiki, in the browser — a file is not uploaded
 just to be highlighted. Around 90 extensions map to a grammar in
 `lib/languages.ts`; anything without one still opens, plain.
 
-Grammars are never bundled up front. Measured on a production build:
+Grammars are never bundled up front. Gzipped JavaScript over the wire, on a
+production build, opening the named fixtures in order:
 
 | | JS transferred |
 | --- | --- |
-| Initial page load | 239 KB |
-| First highlighted file (core + engine + one grammar) | +134 KB |
-| A second language after that (grammar only) | +172 KB |
-| A CSV (no highlighting) | +19 KB |
+| Initial page load | 161 KB |
+| First highlighted file — `query.sql` (core + engine + one grammar) | +218 KB |
+| `widget.tsx` after it (grammar only) | +172 KB |
+| `query.sql` after `widget.tsx` instead (grammar only) | +23 KB |
+| `server.log` — an extension with no grammar | +0 KB |
+| `sales.csv` — no highlighting at all | +19 KB |
+
+The files are named because three of those rows are properties of the file, not
+of the app. **Between these two languages alone a grammar costs 23 KB or
+172 KB** — SQL against TSX — so opening `widget.tsx` first costs +367 KB where
+`query.sql` costs +218 KB, the same core and engine with a heavier grammar
+behind it. Both orderings agree on the difference, which is what says the gap
+is the grammar rather than the measurement.
+
+An earlier version of this table gave a single number for "a grammar", which
+reads as a fixed cost. There is no fixed cost, and 86 grammars are not bounded
+by the two measured here.
+
+Nothing is fetched for an extension that maps to no grammar, which is what the
++0 KB row is there to show.
 
 Highlighting is a progressive enhancement: plain text paints first and is
 replaced when the grammar arrives, so a file stays readable even if it never

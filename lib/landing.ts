@@ -2,9 +2,14 @@
  * The per-format landing pages.
  *
  * People do not search for "file preview" — they search for "open xlsx online"
- * or "view a docx without Word". One page per format is how those searches
- * find this, and each needs its own title, description and copy to be worth
- * indexing separately rather than reading as the same page repeated.
+ * or "view a docx without Word". A page per format *named in a search* is how
+ * those find this, and each needs its own title, description and copy to be
+ * worth indexing separately rather than reading as the same page repeated.
+ *
+ * Not every format earns one. TSV shares the CSV viewer and is looked for as a
+ * spreadsheet rather than by name, and nobody searches for a plain-text
+ * viewer — a page for either would compete with the ones here while answering
+ * nothing new.
  *
  * Kept apart from `lib/formats.ts` on purpose: that registry describes how
  * files are parsed and is imported by both runtimes, and prose has no business
@@ -99,6 +104,20 @@ export const LANDING_PAGES: readonly LandingPage[] = [
     body: [
       "Drop a .json file below and it comes back indented, coloured and numbered, whatever shape it arrived in. A file that is not valid JSON still opens — it shows you the raw text and says what went wrong.",
       "The file is read in your browser and never uploaded, which is worth knowing when the JSON is an API response with credentials in it.",
+    ],
+  },
+  {
+    slug: "image-viewer",
+    formatId: "image",
+    title: "Image viewer — open WebP, AVIF and SVG files online",
+    description:
+      "Open a PNG, JPG, WebP, AVIF, GIF, BMP or SVG in your browser. Zoom and fit, real dimensions, and the file never leaves your device.",
+    headline: "Open an image your photo app won't",
+    body: [
+      "Drop a PNG, JPG, WebP, AVIF, GIF, BMP or SVG below. It opens at the size that fits the window, zooms in steps, and shows its real dimensions. Nothing is uploaded — your browser decodes it here, on your device.",
+      "That the browser does the decoding is also the honest limit of this page: an image your browser cannot read, this cannot read either. It helps when the thing that failed is your system's photo viewer rather than your browser, which is how most people meet WebP and AVIF for the first time.",
+      "An SVG is rendered as a picture rather than placed into the page. That is a safety boundary rather than a styling choice — an SVG is a document, and it can carry script and pull in remote files. Opening it this way means the browser runs neither.",
+      "HEIC is not supported, and that is deliberate. No browser can decode it, so supporting it would mean shipping a decoder just to open a holiday photo — the weight this site exists to avoid.",
     ],
   },
 ] as const;

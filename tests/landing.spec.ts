@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { FORMATS } from "@/lib/formats";
 import { LANDING_PAGES } from "@/lib/landing";
@@ -90,4 +90,80 @@ test("robots.txt allows crawling and points at the sitemap", async ({
   const text = await response!.text();
   expect(text).toContain("Allow: /");
   expect(text).toContain("/sitemap.xml");
+});
+
+/**
+ * Link previews.
+ *
+ * The six landing pages exist to be found and shared, and a card is the first
+ * thing most people see of any of them. These assert the tags are present and
+ * that the images they point at actually resolve — a generated image route can
+ * disappear in a metadata refactor without anything else failing, and the loss
+ * is invisible until someone pastes a link somewhere.
+ */
+test.describe("link preview cards", () => {
+  const contentOf = (tab: Page, selector: string) =>
+    tab.locator(selector).getAttribute("content");
+
+  /**
+   * Open Graph URLs are absolute — a scraper has no page to resolve them
+   * against — and their origin comes from `lib/site.ts`, which is Vercel's
+   * production domain when deployed and `localhost:3000` otherwise. The suite
+   * runs on a different port, so the path is what gets fetched here; the
+   * origin is an environment concern rather than something these can assert.
+   */
+  const fetchByPath = (tab: Page, absolute: string) =>
+    tab.request.get(new URL(absolute).pathname + new URL(absolute).search);
+
+  test("the home page has a card, and it resolves", async ({ page }) => {
+    await page.goto("/");
+
+    const url = await contentOf(page, 'meta[property="og:image"]');
+    expect(url, "no og:image on the home page").toBeTruthy();
+    expect(url, "og:image has to be absolute for a scraper").toMatch(/^https?:/);
+
+    // Fetched rather than trusted: the tag can point at a route that 404s.
+    const image = await fetchByPath(page, url!);
+    expect(image.status()).toBe(200);
+    expect(image.headers()["content-type"]).toContain("image/png");
+
+    expect(await contentOf(page, 'meta[property="og:image:width"]')).toBe(
+      "1200",
+    );
+    expect(await contentOf(page, 'meta[property="og:image:alt"]')).toBeTruthy();
+  });
+
+  for (const landing of LANDING_PAGES) {
+    test(`/${landing.slug} has a card of its own`, async ({ page }) => {
+      await page.goto(`/${landing.slug}`);
+
+      const url = await contentOf(page, 'meta[property="og:image"]');
+      expect(url).toBeTruthy();
+      // The point of six pages is that they answer six different searches;
+      // one shared generic card would undo that at the moment of sharing.
+      expect(url).toContain(landing.slug);
+
+      const image = await fetchByPath(page, url!);
+      expect(image.status()).toBe(200);
+
+      // Named, so a screen reader on whatever posted it says which card.
+      expect(await contentOf(page, 'meta[property="og:image:alt"]')).toContain(
+        landing.headline,
+      );
+    });
+  }
+
+  test("the tab icon and the touch icon both resolve", async ({ page }) => {
+    await page.goto("/");
+
+    for (const selector of [
+      'link[rel="icon"]',
+      'link[rel="apple-touch-icon"]',
+    ]) {
+      const href = await page.locator(selector).getAttribute("href");
+      expect(href, `${selector} is missing`).toBeTruthy();
+      const response = await page.request.get(href!);
+      expect(response.status(), `${selector} does not resolve`).toBe(200);
+    }
+  });
 });

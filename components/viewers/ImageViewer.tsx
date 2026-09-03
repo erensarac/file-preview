@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { reportClientFailure } from "@/app/actions/telemetry";
+import { sizeBucket } from "@/lib/telemetry";
 import { fitZoom, zoomInFrom, zoomOutFrom } from "@/lib/zoom";
 
 /** Matches the scroller's padding; the fit maths has to subtract it. */
@@ -142,7 +144,17 @@ export default function ImageViewer({
               height: event.currentTarget.naturalHeight,
             })
           }
-          onError={() => setFailed(true)}
+          onError={() => {
+            setFailed(true);
+            // The browser gives no detail beyond "it did not decode", so the
+            // name is ours rather than an exception's.
+            void reportClientFailure({
+              formatId: "image",
+              phase: "render",
+              errorName: "DecodeError",
+              sizeBucket: sizeBucket(bytes.byteLength),
+            });
+          }}
           style={
             natural
               ? { width: natural.width * zoom, height: natural.height * zoom }

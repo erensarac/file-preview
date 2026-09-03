@@ -392,6 +392,14 @@ there — including lines that impersonate other entries.
   rather than queueing it. This protects one instance under load; it is not
   rate limiting, because the counter lives in one process — more instances
   simply means proportionally more concurrent parses.
+- A `multipart/form-data` POST to a page path is decoded by the framework as a
+  server action submission, and answered with a 500 when there is no action to
+  find — a server error anyone could provoke with one `curl`, in the same log
+  that failures are supposed to be visible in. `middleware.ts` refuses those
+  with a 405 before decoding is attempted. It keys on the `Next-Action` header
+  that a genuine call carries, so a `<form action={…}>` posting without
+  JavaScript would be refused by it; there is no such form here, and adding one
+  means teaching this check about it.
 - **Rate limiting is enforced at the edge, not in this codebase.** A firewall
   rule on the deployment refuses more than **30 POST requests per minute from
   one IP address**, before the request reaches any code here. That covers both

@@ -194,9 +194,13 @@ new `Preview` variant and viewer, as PDF and images did.
 ## Landing pages
 
 People do not search for "file preview" — they search for "open xlsx online" or
-"view a docx without Word". `lib/landing.ts` carries one page per format, and
-`app/[viewer]/page.tsx` prerenders them with their own titles, descriptions and
-canonical URLs. `dynamicParams` is off, so an unlisted slug is a 404 rather than
+"view a docx without Word". `lib/landing.ts` carries a page for six of the nine
+formats — the ones people name when they search — and `app/[viewer]/page.tsx`
+prerenders them with their own titles, descriptions and canonical URLs.
+
+TSV, plain text and images have none. That is a gap rather than a decision:
+"open a webp online" is exactly the kind of search these pages exist to answer,
+and images arrived after the set was written. `dynamicParams` is off, so an unlisted slug is a 404 rather than
 a dynamic segment answering for every unknown path on the site.
 
 The copy lives apart from `lib/formats.ts` deliberately: that registry describes

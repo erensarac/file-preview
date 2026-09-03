@@ -91,6 +91,34 @@ has a trade-off, the body is where it belongs, so the next person finds it with
 Pull requests are merged with a **merge commit**. Not squash, not rebase — the
 branch's own commits stay reachable in the history.
 
+## Checking the rate limits
+
+The upload action is protected by rate-limit rules in Vercel's firewall, in
+front of the application. Nothing in this repository configures them and no
+spec can reach them: the suite drives a local server that the firewall never
+sees, so the rules could be removed and every test here would stay green.
+
+That gap is covered by hand:
+
+```
+scripts/verify-rate-limit.sh https://file-preview.vercel.app
+```
+
+or, if you would rather not point a few hundred requests at production from
+your own connection, run the **Verify deployment** workflow from the Actions
+tab, which does the same thing from a runner.
+
+Run it after changing a rule, and after any change to how the upload action is
+called — the rules match on request *shape* (method and content type), so a
+change there can walk straight past a rule that still looks correct in the
+dashboard.
+
+The script fails in both directions on purpose. A rule that blocks nothing is
+caught by the bursts; a rule that blocks everything is caught by the negative
+control, which loads the page normally first and fails if that is refused. It
+also waits out the window and checks traffic is allowed again, because a block
+that never lifts is an outage rather than a limit.
+
 ## Adding a format
 
 Two edits, in this order:

@@ -27,7 +27,7 @@ import {
   sizeBucket,
   type FailurePhase,
 } from "@/lib/telemetry";
-import { ParseTimeoutError } from "@/lib/parse-runner";
+import { ParseMemoryError, ParseTimeoutError } from "@/lib/parse-runner";
 import { assertSafeArchive, ZipBombError } from "@/lib/zip-guard";
 
 /**
@@ -121,6 +121,16 @@ export async function previewFile(formData: FormData): Promise<PreviewResult> {
       // rise in locked files is worth being able to see.
       record("guard");
       return { ok: false, error: encryptedMessage(spec.label) };
+    }
+
+    if (error instanceof ParseMemoryError) {
+      // A separate message from the timeout: "too complex" and "too large to
+      // hold" send someone to different remedies.
+      record("parse");
+      return {
+        ok: false,
+        error: `This ${spec.label} file needed more memory than we allow for one file, so we stopped. It may expand to far more than its size suggests.`,
+      };
     }
 
     if (error instanceof ParseTimeoutError) {

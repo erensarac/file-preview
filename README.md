@@ -391,23 +391,31 @@ there — including lines that impersonate other entries.
 - `lib/concurrency.ts` caps concurrent parses per instance and sheds the excess
   rather than queueing it. This protects one instance under load; it is not
   rate limiting, which needs a shared store and belongs at the edge.
-- Office parsing runs in a worker thread with a wall-clock budget
-  (`lib/parse-runner.ts`), so a document that never finishes can be **stopped**
-  rather than merely abandoned. `exceljs` and `mammoth` do enough synchronous
-  work to block the event loop, and a `Promise.race` against a timer would
-  return a response while the parse carried on holding memory and a
-  concurrency slot — which is why no timeout existed until there was somewhere
-  to put the work that could be killed. Measured on this runtime,
-  `terminate()` stops a worker running a loop that never yields in 4 ms.
-- That worker **does not bound memory**, and the reason is worth recording
-  because the obvious fix does not work. `resourceLimits` is accepted by the
-  worker and reported back correctly, and then ignored: with
-  `maxOldGenerationSizeMb: 16` the worker's heap reached 2,217 MB — 138x the
-  stated limit — and was still running when the measurement gave up. The only
-  mechanism that did enforce was `--max-old-space-size` in a separate process,
-  which on serverless means spawning a runtime per upload. So the ceiling is
-  the platform's: a function that exhausts its memory is killed, costing one
-  failed request and a cold start.
+- Office parsing runs in a **process of its own** (`lib/parse-runner.ts`) with
+  two budgets it cannot exceed: 8 s of wall clock and 256 MB of heap. A
+  document that runs away is stopped rather than abandoned, and the user is
+  told which limit it met.
+- It is a process rather than a thread, and that was decided by measurement.
+  `exceljs` and `mammoth` do enough synchronous work to block the event loop,
+  so a `Promise.race` would return a response while the parse carried on
+  holding memory and a concurrency slot — which is why no timeout existed
+  until there was somewhere to put the work that could be killed. A thread
+  could do the timeout: `terminate()` stops a worker running a loop that never
+  yields in 4 ms. A thread **cannot** bound memory: `resourceLimits` is
+  accepted, reported back correctly, and ignored — with
+  `maxOldGenerationSizeMb: 16` the worker's heap reached 2,217 MB, 138x the
+  stated limit, and was still running. A process started with
+  `--max-old-space-size` genuinely dies at its ceiling, in 662 ms, on
+  `SIGABRT`, with V8's own message on stderr — which is what makes a memory
+  kill identifiable rather than just another crash.
+- The cost was measured before choosing: `spawn` is about 56 ms more than a
+  thread, and a real `report.xlsx` goes end to end — spawn, module load and
+  parse — in **274 ms**. The largest fixture here, a 3 MB workbook at the
+  100,000-cell budget, completes in about 2.9 s inside the 256 MB ceiling.
+- All of those numbers come from a development container with 16 GB and no
+  cgroup limit. On a serverless platform the function has its own memory budget
+  that this child draws from, so the ceiling is a share of a share, and the
+  spawn cost on a cold instance is unmeasured.
 - Server-parsed formats are capped at 4 MB because the deployment rejects
   larger request bodies at its edge, before any of this code runs. Raising a
   cap past that ceiling **fails the build** rather than shipping a limit the

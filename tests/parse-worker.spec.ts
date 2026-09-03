@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 
 import {
+  PARSE_MEMORY_MB,
   PARSE_TIMEOUT_MS,
+  ParseMemoryError,
   ParserError,
   ParseTimeoutError,
   runParseInWorker,
@@ -24,14 +26,14 @@ const LIMITS: WorkerLimits = {
 };
 
 /**
- * The parse runs in a worker so that it can be *stopped*.
+ * The parse runs in a process of its own so that it can be *stopped* — on time
+ * and on memory.
  *
- * `exceljs` and `mammoth` do enough synchronous work to block the event loop,
- * and a `Promise.race` against a timer would return a response while the parse
- * carried on holding memory and a concurrency slot. That is why no timeout
- * existed until there was somewhere to put the work that could be killed.
+ * A thread was the first version and could do neither honestly: a worker's
+ * `resourceLimits` is accepted, reported back, and ignored. A process started
+ * with `--max-old-space-size` genuinely dies at its ceiling.
  */
-test.describe("running a parse in a worker", () => {
+test.describe("running a parse in its own process", () => {
   test("a workbook comes back with its budgets applied", async () => {
     const { result, notices } = await runParseInWorker(
       "xlsx",
@@ -129,10 +131,48 @@ test.describe("running a parse in a worker", () => {
     expect(result.kind).toBe("sheet");
   });
 
-  test("the default budget is well under the platform's own", () => {
+  /**
+   * The ceiling a thread could not give. `resourceLimits` on a worker was
+   * accepted, reported back correctly, and ignored — measured at 138x the
+   * stated limit — so this is the assertion that says the ceiling is real.
+   */
+  test("a parse past its memory ceiling is stopped", async () => {
+    const failure = await runParseInWorker(
+      "xlsx",
+      bytesOf("wide.xlsx"),
+      LIMITS,
+      30_000,
+      // Far below what a 3 MB workbook needs, so V8 gives up rather than the
+      // parse merely being slow — and the timeout is generous so a timeout
+      // cannot be what this catches.
+      24,
+    ).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ParseMemoryError);
+    expect((failure as Error).message).toContain("24MB");
+  });
+
+  test("a memory kill leaves the next parse working", async () => {
+    await runParseInWorker("xlsx", bytesOf("wide.xlsx"), LIMITS, 30_000, 24)
+      .catch(() => undefined);
+
+    const { result } = await runParseInWorker(
+      "xlsx",
+      bytesOf("report.xlsx"),
+      LIMITS,
+    );
+    expect(result.kind).toBe("sheet");
+  });
+
+  test("the defaults sit between what files need and what the platform allows", () => {
     // A parse has to fail with our message rather than the deployment's
     // timeout page, which says nothing a user can act on.
     expect(PARSE_TIMEOUT_MS).toBeGreaterThan(1_000);
     expect(PARSE_TIMEOUT_MS).toBeLessThan(10_000);
+
+    // Comfortably above what the fixtures expand to (~27 MB) and far below any
+    // plausible function size, so a real document never meets it.
+    expect(PARSE_MEMORY_MB).toBeGreaterThan(64);
+    expect(PARSE_MEMORY_MB).toBeLessThan(1_024);
   });
 });

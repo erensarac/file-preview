@@ -1,10 +1,11 @@
+import { spawn } from "node:child_process";
 import { join } from "node:path";
-import { Worker } from "node:worker_threads";
 
 /**
- * Runs a parse in a worker thread, with a wall-clock budget it cannot exceed.
+ * Runs a parse in a process of its own, with a time budget and a memory
+ * ceiling it cannot exceed.
  *
- * ── Why a thread rather than a race ──────────────────────────────────────
+ * ── Why not in the request path ──────────────────────────────────────────
  *
  * `exceljs` and `mammoth` do enough synchronous work that a runaway document
  * blocks the event loop. A `Promise.race` against a timer would return a
@@ -13,33 +14,47 @@ import { Worker } from "node:worker_threads";
  * timeout, which is why one was never added until there was somewhere to put
  * the work that could actually be stopped.
  *
- * `terminate()` can stop it. Measured on this runtime: a worker running
- * `for(;;){}` — a loop that never yields — is dead 4 ms after the call.
+ * ── Why a process rather than a thread ───────────────────────────────────
  *
- * ── What this does not do ────────────────────────────────────────────────
+ * A thread was the first version and it is cheaper. It cannot bound memory.
+ * A worker's `resourceLimits` is accepted, reported back correctly, and then
+ * ignored: measured with `maxOldGenerationSizeMb: 16`, the worker's heap
+ * reached 2,217 MB — 138x — and was still running. A ceiling built on it
+ * would be a number in the code that bounds nothing.
  *
- * It does not bound memory. `resourceLimits` looks like the answer and is not:
- * on Node 22 the worker accepts the option, reports it back correctly, and
- * ignores it. Measured with `maxOldGenerationSizeMb: 16`, the worker's heap
- * reached 2,217 MB — 138x the limit — and was still running when the test
- * gave up. Setting it here would put a number in the code that means nothing.
- * See the issue for the full measurements.
+ * A process started with `--max-old-space-size` genuinely dies at its limit.
+ * Measured: 662 ms to hit a 128 MB ceiling, exiting on `SIGABRT` with V8's own
+ * message on stderr, which is what makes a memory kill identifiable rather
+ * than just another crash.
  *
- * ── Why no `server-only` here ────────────────────────────────────────────
+ * The cost is real and was measured before choosing: `fork()` takes ~98 ms
+ * against ~42 ms for a thread, so about **56 ms more per Office upload**, on
+ * work that already takes 200 ms to 3 s.
  *
- * It would be redundant and it would make this module untestable. Redundant
- * because `node:worker_threads` cannot resolve in a browser bundle at all — an
- * accidental client import fails the build either way — and because
- * `lib/adapters/server.ts`, the only thing in the app that reaches this,
- * carries the guard where it matters, keeping `exceljs` out of the client
- * bundle. Untestable because the guard throws in a plain Node process, and the
- * timeout path has no other way to be driven.
+ * ── Measured here, not on the deployment ─────────────────────────────────
+ *
+ * Every number above comes from a container with 16 GB and no cgroup limit.
+ * On a serverless platform the function has its own memory budget that this
+ * child draws from, so the ceiling is a share of a share, and the spawn cost
+ * on a cold instance is unmeasured. That was a known risk when this was
+ * written, taken deliberately.
  */
 
 /** A parse that has not finished by now is not going to. */
 export const PARSE_TIMEOUT_MS = 8_000;
 
+/**
+ * The heap a single parse may use.
+ *
+ * Generous against what real files need — the fixtures here expand to about
+ * 27 MB — and far below any plausible function size, so a legitimate document
+ * never meets it and a hostile one meets it long before the platform's own
+ * limit turns into a killed instance.
+ */
+export const PARSE_MEMORY_MB = 256;
+
 export class ParseTimeoutError extends Error {}
+export class ParseMemoryError extends Error {}
 
 /** The failure a parser reports for itself, carried back rather than thrown. */
 export class ParserError extends Error {
@@ -59,84 +74,145 @@ export interface WorkerLimits {
   maxHtmlBytes: number;
 }
 
-/** What the worker sends back on success. */
+/** What the child sends back on success. */
 export type WorkerResult =
   | { kind: "sheet"; sheets: { name: string; rows: string[][]; totalRows: number }[] }
   | { kind: "raw-html"; html: string };
 
 /**
+ * V8's own words when it gives up.
+ *
+ * Matched so a memory kill can be told apart from any other abnormal exit and
+ * given a message that says what actually happened. Both spellings appear
+ * depending on where the allocation failed.
+ */
+const OOM_SIGNATURE = /heap out of memory|Allocation failed|JavaScript heap/i;
+
+/**
  * Resolved from the working directory rather than `import.meta.url`.
  *
  * The bundler rewrites module URLs, so a path derived from this file's own
- * location points into the bundle rather than at the worker. `next.config.ts`
+ * location points into the bundle rather than at the child. `next.config.ts`
  * forces the file into the deployment's traced output so it is on disk beside
  * the server at runtime.
  */
-const WORKER_PATH = join(process.cwd(), "lib", "parse-worker.mjs");
+const CHILD_PATH = join(process.cwd(), "lib", "parse-child.mjs");
 
 /**
- * `timeoutMs` is a parameter rather than a constant read from the environment.
+ * `timeoutMs` and `memoryMb` are parameters rather than constants read from
+ * the environment.
  *
- * The budget is a property of the call, and making it one means the suite can
- * drive the timeout path directly instead of the code carrying a knob whose
- * only purpose is to be turned in tests.
+ * Both are properties of the call, and making them so means the suite can
+ * drive the timeout and the ceiling directly instead of the code carrying
+ * knobs whose only purpose is to be turned in tests.
  */
 export function runParseInWorker(
   formatId: string,
   bytes: Uint8Array,
   limits: WorkerLimits,
   timeoutMs: number = PARSE_TIMEOUT_MS,
+  memoryMb: number = PARSE_MEMORY_MB,
 ): Promise<{ result: WorkerResult; notices: string[] }> {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(WORKER_PATH, {
-      workerData: { formatId, bytes, limits },
+    /*
+     * `spawn` rather than `fork`, and the script named in argv rather than as
+     * the first argument.
+     *
+     * `fork(path)` reads to a bundler like a module reference: Turbopack
+     * resolved the constant, tried to import it, and failed the build with
+     * "server relative imports are not implemented yet". Passing the path as
+     * an ordinary argument to the Node binary leaves nothing to analyse, and
+     * the `ipc` entry in `stdio` gives back the channel `fork` would have set
+     * up — `child.send` works exactly the same.
+     */
+    const child = spawn(
+      process.execPath,
+      [`--max-old-space-size=${memoryMb}`, CHILD_PATH],
+      {
+        /*
+         * Structured clone rather than the default JSON. A few megabytes of
+         * file sent as JSON becomes a number-keyed object — enormous, slow,
+         * and it does not survive the trip as a typed array at the far end.
+         */
+        serialization: "advanced",
+        // stderr is piped because V8 announces an out-of-memory death there
+        // and nowhere else; stdout is dropped because a parser has no business
+        // writing to it.
+        stdio: ["ignore", "ignore", "pipe", "ipc"],
+      },
+    );
+
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => {
+      // Bounded: a child in a crash loop could otherwise stream indefinitely
+      // into the parent's memory, which is the failure being prevented.
+      if (stderr.length < 8_192) stderr += chunk.toString();
     });
 
     let settled = false;
     /**
      * Every exit path goes through here.
      *
-     * A worker left running is the failure this whole change exists to
-     * prevent, so termination is unconditional rather than conditional on
-     * which branch got here first — and the guard makes a late `exit` after a
-     * timeout harmless rather than a second settle.
+     * A child left running is the failure this exists to prevent, so the kill
+     * is unconditional rather than conditional on which branch got here first.
+     * `SIGKILL` because a parse that has to be stopped is not going to honour
+     * anything politer, and the guard makes the `exit` that follows harmless
+     * rather than a second settle racing the real reason.
      */
     const finish = (act: () => void) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      void worker.terminate();
+      child.kill("SIGKILL");
       act();
     };
 
     const timer = setTimeout(() => {
       finish(() =>
         reject(
-          new ParseTimeoutError(
-            `Parse exceeded ${timeoutMs}ms and was stopped`,
-          ),
+          new ParseTimeoutError(`Parse exceeded ${timeoutMs}ms and was stopped`),
         ),
       );
     }, timeoutMs);
 
-    worker.on("message", (message) => {
-      if (message.ok) {
-        finish(() =>
-          resolve({ result: message.result, notices: message.notices }),
-        );
+    child.on("message", (message: unknown) => {
+      const reply = message as
+        | { ok: true; result: WorkerResult; notices: string[] }
+        | { ok: false; name: string; message: string };
+
+      if (reply.ok) {
+        finish(() => resolve({ result: reply.result, notices: reply.notices }));
       } else {
-        finish(() => reject(new ParserError(message.message, message.name)));
+        finish(() => reject(new ParserError(reply.message, reply.name)));
       }
     });
 
-    // A worker that dies without reporting — an out-of-memory kill, a failure
-    // to load the file at all — must still settle, or the request hangs until
-    // the platform gives up on it.
-    worker.on("error", (error) => finish(() => reject(error)));
-    worker.on("exit", (code) =>
-      finish(() =>
-        reject(new Error(`Parse worker stopped unexpectedly (code ${code})`)),
-      ),
-    );
+    child.on("error", (error) => finish(() => reject(error)));
+
+    /*
+     * The only place a memory kill can be recognised. The child dies without
+     * replying, so without this the request would hang until the platform gave
+     * up on it — and a generic "stopped unexpectedly" would tell the user
+     * nothing about a file that is simply too large to open here.
+     */
+    child.on("exit", (code, signal) => {
+      finish(() => {
+        if (OOM_SIGNATURE.test(stderr)) {
+          reject(
+            new ParseMemoryError(
+              `Parse exceeded ${memoryMb}MB and was stopped`,
+            ),
+          );
+          return;
+        }
+        reject(
+          new Error(
+            `Parse process stopped unexpectedly (code ${code}, signal ${signal})`,
+          ),
+        );
+      });
+    });
+
+    child.send({ formatId, bytes, limits });
   });
 }

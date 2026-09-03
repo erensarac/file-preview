@@ -95,7 +95,7 @@ test("robots.txt allows crawling and points at the sitemap", async ({
 /**
  * Link previews.
  *
- * The six landing pages exist to be found and shared, and a card is the first
+ * The landing pages exist to be found and shared, and a card is the first
  * thing most people see of any of them. These assert the tags are present and
  * that the images they point at actually resolve — a generated image route can
  * disappear in a metadata refactor without anything else failing, and the loss
@@ -139,7 +139,7 @@ test.describe("link preview cards", () => {
 
       const url = await contentOf(page, 'meta[property="og:image"]');
       expect(url).toBeTruthy();
-      // The point of six pages is that they answer six different searches;
+      // The point of separate pages is that they answer different searches;
       // one shared generic card would undo that at the moment of sharing.
       expect(url).toContain(landing.slug);
 

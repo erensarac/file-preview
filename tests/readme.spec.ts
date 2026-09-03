@@ -69,8 +69,10 @@ test.describe("the README's runtime table", () => {
    */
   test("counts the split correctly", () => {
     const client = FORMATS.filter((f) => f.runtime === "client").length;
+    // Whitespace-tolerant because the sentence is wrapped prose: a reflow that
+    // puts "nine" on the next line is not a change to what it claims.
     const claim = README.match(
-      /(\w+) of the (\w+) formats never leave the device/,
+      /(\w+)\s+of\s+the\s+(\w+)\s+formats\s+never\s+leave\s+the\s+device/,
     );
     expect(claim, "the sentence counting the split is gone").toBeTruthy();
 
@@ -92,7 +94,9 @@ test.describe("the README's runtime table", () => {
  * actually false.
  */
 test("the README counts the landing pages correctly", () => {
-  const claim = README.match(/a page for (\w+) of the (\w+)\s+formats/);
+  const claim = README.match(
+    /a\s+page\s+for\s+(\w+)\s+of\s+the\s+(\w+)\s+formats/,
+  );
   expect(claim, "the sentence counting the landing pages is gone").toBeTruthy();
 
   const words = ["zero", "one", "two", "three", "four", "five", "six",

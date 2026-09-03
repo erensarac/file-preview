@@ -1,0 +1,59 @@
+# The one check CI cannot make for itself.
+#
+# The rate limits live in Vercel's firewall, in front of the application. The
+# Playwright suite drives a local server that the firewall never sees, so no
+# spec can cover them — the rules could be deleted tomorrow and every test here
+# would still be green.
+#
+# This runs on demand rather than on push. It sends a few hundred requests at
+# the real deployment on purpose, which is a reasonable thing to do just after
+# changing a firewall rule and an unreasonable thing to do on every commit.
+name: Verify deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: The deployment to check
+        required: true
+        default: https://file-preview.vercel.app
+      upload_limit:
+        description: Requests per minute allowed by the upload rule
+        required: true
+        default: "30"
+      telemetry_limit:
+        description: Requests per minute allowed by the telemetry rule
+        required: true
+        default: "100"
+
+permissions:
+  contents: read
+
+# A runner is a single source address, and that address is what the rules count
+# against. Two runs at once would share one counter and read each other's
+# refusals as their own. They queue rather than cancel: cancelling mid-burst
+# leaves the window full, so the run that replaced it would start against a
+# counter it did not fill.
+concurrency:
+  group: verify-deployment
+  cancel-in-progress: false
+
+jobs:
+  rate-limits:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rate limits
+        # Through the environment rather than interpolated into the script.
+        # `${{ }}` is substituted as text before bash ever sees the line, so a
+        # dispatch input written as a shell fragment would run as one; read as
+        # a variable it is only ever a value.
+        env:
+          BASE_URL: ${{ inputs.base_url }}
+          UPLOAD_LIMIT: ${{ inputs.upload_limit }}
+          TELEMETRY_LIMIT: ${{ inputs.telemetry_limit }}
+        run: |
+          scripts/verify-rate-limit.sh "$BASE_URL" "$UPLOAD_LIMIT" "$TELEMETRY_LIMIT"

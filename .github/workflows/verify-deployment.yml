@@ -18,13 +18,15 @@ on:
         required: true
         default: https://file-preview.vercel.app
       upload_limit:
-        description: Requests per minute allowed by the upload rule
+        description: Requests per minute allowed for uploads
         required: true
         default: "30"
       telemetry_limit:
-        description: Requests per minute allowed by the telemetry rule
+        # The same number, because one rule covers both endpoints — the plan
+        # allows a single custom rule, so the two share a counter.
+        description: Requests per minute allowed for failure reports
         required: true
-        default: "100"
+        default: "30"
 
 permissions:
   contents: read

@@ -93,10 +93,15 @@ branch's own commits stay reachable in the history.
 
 ## Checking the rate limits
 
-The upload action is protected by rate-limit rules in Vercel's firewall, in
-front of the application. Nothing in this repository configures them and no
-spec can reach them: the suite drives a local server that the firewall never
-sees, so the rules could be removed and every test here would stay green.
+Both things a caller can reach — uploading a file and reporting a browser-side
+failure — are protected by **one** rate-limit rule in Vercel's firewall, in
+front of the application: 30 POST requests per minute from one IP address. They
+share a counter because the account's plan allows a single custom rule; the
+README says why that is a compromise rather than a design.
+
+Nothing in this repository configures the rule and no spec can reach it: the
+suite drives a local server that the firewall never sees, so the rule could be
+removed and every test here would stay green.
 
 That gap is covered by hand:
 
@@ -108,8 +113,13 @@ or, if you would rather not point a few hundred requests at production from
 your own connection, run the **Verify deployment** workflow from the Actions
 tab, which does the same thing from a runner.
 
-Run it after changing a rule, and after any change to how the upload action is
-called — the rules match on request *shape* (method and content type), so a
+It takes the limits as optional arguments and defaults to the rule as
+deployed. Pass them only when checking a rule you have changed but not yet
+published — a default that disagrees with the dashboard is a run that reports
+confidently about a threshold nobody set.
+
+Run it after changing the rule, and after any change to how either endpoint is
+called — the rule matches on request *shape* (method and content type), so a
 change there can walk straight past a rule that still looks correct in the
 dashboard.
 
@@ -129,8 +139,8 @@ Two edits, in this order:
    the new id, returning one of the existing `Preview` shapes.
 
 Detection, routing, the drop zone chips, size limits and the viewer all follow
-from the registry. A genuinely new *kind* of content — an image, say — also
-needs a `Preview` variant and a viewer, as PDF did.
+from the registry. A genuinely new *kind* of content also needs a `Preview`
+variant and a viewer, as PDF and images each did.
 
 Three constraints that are easy to trip over:
 
@@ -146,6 +156,26 @@ Three constraints that are easy to trip over:
   rejects larger request bodies at its edge, before any of this code runs.
   Raising a cap past that ceiling fails the build rather than shipping a limit
   the platform will silently override.
+- **The README's runtime table has to name it.** A spec checks that table
+  against the registry, so a format missing from it — or listed under the wrong
+  runtime — fails CI. That table is how the project explains itself, and it had
+  quietly stopped being true once already, which is why it is enforced rather
+  than trusted.
+
+## Server actions, and one thing that will refuse yours
+
+`middleware.ts` answers **405** to a `multipart/form-data` POST that carries no
+`Next-Action` header. That exists because the framework decodes such a request
+as an action submission and throws when it cannot find one, answering 500 to a
+request anyone could send — a server error, in the log where real regressions
+are meant to be visible.
+
+The consequence for a contributor: **a `<form action={…}>` that submits without
+JavaScript would be refused by it.** Progressive enhancement carries the action
+id in the body rather than a header, which is precisely the shape being
+rejected. There is no such form here today; adding one means teaching that
+check about it first, and the spec named `a real upload is unaffected` is what
+will tell you it needs teaching.
 
 ## Anything producing HTML
 

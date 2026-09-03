@@ -35,7 +35,11 @@ set -uo pipefail
 BASE="${1:?usage: scripts/verify-rate-limit.sh https://your-domain [upload-limit] [telemetry-limit]}"
 BASE="${BASE%/}"
 UPLOAD_LIMIT="${2:-30}"
-TELEMETRY_LIMIT="${3:-100}"
+# Both default to the same number because one rule covers both endpoints. The
+# plan allows a single custom rule, so uploads and failure reports share a
+# counter — see the README. These defaults describe the rule as deployed; pass
+# arguments when checking something else.
+TELEMETRY_LIMIT="${3:-30}"
 
 # The window every Vercel rate-limit rule is configured over here. The recovery
 # check waits it out, so it has to match the rule or the wait proves nothing.

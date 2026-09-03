@@ -9,6 +9,8 @@ import {
   useState,
 } from "react";
 
+import { fitZoom, zoomInFrom, zoomOutFrom } from "@/lib/zoom";
+
 /**
  * PDF pages, rendered as they come into view.
  *
@@ -25,7 +27,6 @@ import {
 
 /** Pages kept rendered on either side of the visible ones. */
 const OVERSCAN = 1;
-const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 /** Matches the scroller's `p-2`; the fit maths has to subtract it. */
 const SCROLLER_PADDING = 8;
 /** Matches the `gap-4` between pages; the offset maths has to include it. */
@@ -84,17 +85,9 @@ export default function PdfViewer({ bytes }: { bytes: Uint8Array }) {
   /** A height correction above the viewport, applied after the DOM has it. */
   const pendingScroll = useRef(0);
 
-  const pageWidth = sizes[0]?.width ?? 0;
-  /**
-   * Never magnifies — only shrinks a page that would not otherwise fit.
-   *
-   * Widening to fill a large monitor would blow a small page up to fill it,
-   * which is not what "fit" means to anyone, and would change what a desktop
-   * user sees today for no reason.
-   */
-  const fitZoom =
-    pageWidth > 0 && available > 0 ? Math.min(1, available / pageWidth) : 1;
-  const zoom = chosenZoom ?? fitZoom;
+  // The first page's width sets the fit; a document whose pages differ is
+  // fitted to its first one rather than jumping scale as you scroll.
+  const zoom = chosenZoom ?? fitZoom(available, sizes[0]?.width ?? 0);
   const fitting = chosenZoom === null;
 
   useEffect(() => {
@@ -281,11 +274,8 @@ export default function PdfViewer({ bytes }: { bytes: Uint8Array }) {
     setPageDraft(null);
   }, [pageDraft, goToPage]);
 
-  // A fitted zoom is rarely one of the steps, so "next" and "previous" are
-  // found by value. `null` means there is nothing further in that direction.
-  const zoomIn = ZOOM_STEPS.find((step) => step > zoom + 0.001) ?? null;
-  const zoomOut =
-    [...ZOOM_STEPS].reverse().find((step) => step < zoom - 0.001) ?? null;
+  const zoomIn = zoomInFrom(zoom);
+  const zoomOut = zoomOutFrom(zoom);
 
   if (error) {
     return (

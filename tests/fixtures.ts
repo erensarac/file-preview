@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { deflateSync } from "node:zlib";
 
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
@@ -126,6 +127,69 @@ function buildPdf(pages: PdfPageSpec[]): Buffer {
     `startxref\n${xrefOffset}\n%%EOF\n`;
 
   return Buffer.from(pdf, "latin1");
+}
+
+/**
+ * A real PNG, built here rather than committed.
+ *
+ * Same reasoning as the PDF: a binary fixture is opaque in review, and the
+ * thing under test — that the browser decodes it and reports its dimensions —
+ * is only meaningful if the dimensions are visible in the source.
+ *
+ * Truecolour, 8 bits per channel, no interlacing. Each scanline carries a
+ * leading filter byte of 0, meaning "stored as-is", which is what keeps this
+ * short enough to read.
+ */
+function buildPng(width: number, height: number): Buffer {
+  const table = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc32 = (buffer: Buffer) => {
+    let c = 0xffffffff;
+    for (const byte of buffer) c = table[(c ^ byte) & 0xff]! ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+
+  const chunk = (type: string, data: Buffer) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, "latin1"), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8; // bit depth
+  header[9] = 2; // colour type: truecolour
+  header[10] = 0; // deflate
+  header[11] = 0; // adaptive filtering
+  header[12] = 0; // no interlace
+
+  // Two bands, so the image is visibly not a blank rectangle.
+  const raw = Buffer.alloc(height * (1 + width * 3));
+  for (let y = 0; y < height; y += 1) {
+    const row = y * (1 + width * 3);
+    raw[row] = 0; // filter: none
+    for (let x = 0; x < width; x += 1) {
+      const pixel = row + 1 + x * 3;
+      const upper = y < height / 2;
+      raw[pixel] = upper ? 0xb4 : 0x1c;
+      raw[pixel + 1] = upper ? 0x53 : 0x1b;
+      raw[pixel + 2] = upper ? 0x1f : 0x19;
+    }
+  }
+
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", header),
+    chunk("IDAT", deflateSync(raw)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
 }
 
 export async function buildFixtures(): Promise<void> {
@@ -324,6 +388,33 @@ export async function buildFixtures(): Promise<void> {
       { text: "Portrait three" },
     ]),
   );
+
+  // 200x120 so the reported dimensions are something a test can assert
+  // against rather than a square that could match by accident.
+  writeFileSync(at("picture.png"), buildPng(200, 120));
+
+  /*
+   * An SVG carrying a script and a remote image reference.
+   *
+   * Both must be inert. The viewer loads an SVG through an `<img>`, where the
+   * browser renders it in secure static mode — no script, no external fetch —
+   * which is the only reason SVG is an accepted format at all.
+   */
+  writeFileSync(
+    at("diagram.svg"),
+    [
+      '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="90">',
+      '  <rect width="160" height="90" fill="#b4531f"/>',
+      '  <image href="https://example.com/tracker.png" width="10" height="10"/>',
+      "  <script>window.__svgPwned = true;</script>",
+      "</svg>",
+      "",
+    ].join("\n"),
+  );
+
+  // A .png that is not a PNG. There is no signature check for images, so this
+  // has to be caught by the browser failing to decode it.
+  writeFileSync(at("not-really.png"), "this is text, not a picture\n");
 
   // Right extension, wrong contents — must be rejected on the signature
   // rather than reaching pdf.js and failing as an opaque worker error.

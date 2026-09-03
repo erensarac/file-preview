@@ -106,6 +106,45 @@ const parsePdf: ClientParser = async (file) => {
   return { kind: "pdf", bytes };
 };
 
+/**
+ * The MIME type to wrap an image's bytes in.
+ *
+ * `file.type` is the browser's own guess and is routinely empty — a file
+ * dragged from an archive, or handed over by an operating system that does not
+ * know the extension. A blob with no type will not render, so the extension is
+ * the fallback rather than the other way round.
+ */
+const IMAGE_MIME: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  avif: "image/avif",
+  svg: "image/svg+xml",
+  bmp: "image/bmp",
+};
+
+/**
+ * An image is passed through, like a PDF: the browser is the decoder.
+ *
+ * There is no signature check here on purpose. The equivalent of the PDF one
+ * would be a table of magic bytes for eight formats, which can only ever
+ * reject things — and the browser already gives a definitive answer when it
+ * tries to decode. A file that is not really a PNG fails there, along with
+ * every corrupt file, and the viewer says so in one place.
+ */
+const parseImage: ClientParser = async (file) => {
+  const extension = extensionOf(file.name);
+  const declared = file.type.startsWith("image/") ? file.type : null;
+
+  return {
+    kind: "image",
+    bytes: new Uint8Array(await file.arrayBuffer()),
+    mimeType: declared ?? IMAGE_MIME[extension] ?? "application/octet-stream",
+  };
+};
+
 const parseText: ClientParser = async (file) => ({
   kind: "text",
   text: await file.text(),
@@ -119,6 +158,7 @@ const PARSERS: Partial<Record<FormatId, ClientParser>> = {
   json: parseJson,
   text: parseText,
   pdf: parsePdf,
+  image: parseImage,
 };
 
 // A format whose runtime and parser disagree fails confusingly at the far end —

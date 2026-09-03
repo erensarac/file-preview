@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import ServiceWorker from "@/components/ServiceWorker";
 import { SITE_URL } from "@/lib/site";
 
 import "./globals.css";
@@ -27,7 +28,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-dvh font-sans antialiased">{children}</body>
+      <body className="min-h-dvh font-sans antialiased">
+        {children}
+        <ServiceWorker />
+      </body>
     </html>
   );
 }

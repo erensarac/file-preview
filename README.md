@@ -183,6 +183,36 @@ Below `sm` the drop zone stops describing a drag. A phone has no such gesture,
 and naming it next to the button that is the only way in is worse than saying
 nothing.
 
+## Installing it
+
+`app/manifest.ts` makes the site installable, and `public/sw.js` makes it work
+with no connection. That is worth more here than it is for most sites: every
+format except Excel and Word is parsed in the tab and never uploaded, so there
+is no round-trip to lose — what was missing was the shell.
+
+The worker is **network-first for everything**, with the cache used only as a
+fallback. The usual arrangement, cache-first for static assets, is faster and
+is also the easiest way to ship a bug that outlives its fix: a stale entry gets
+served forever, and "clear your cache" does not reach someone who installed the
+app rather than bookmarking it. Nothing is precached either, so there is no
+hand-written inventory of build artefacts to go stale — offline therefore works
+from the second visit, and a PDF opens offline once pdf.js's worker and fonts
+have been fetched at least once.
+
+Only same-origin successful GETs are cached, which excludes the server action
+by construction. A spec asserts the cache holds nothing derived from a user's
+file, because a cache quietly retaining document content would break the
+privacy split in the least visible way possible.
+
+Excel and Word need a connection, and offline they say so rather than failing
+with the generic parser message, which would read as the app being broken.
+
+`file_handlers` in the manifest registers the app with the operating system, so
+a double-clicked spreadsheet can open here. The accept map is derived from
+`lib/formats.ts` the same way `ACCEPT_ATTRIBUTE` is — adding a format registers
+it with the OS by the same one-line change. It is Chromium-only and only once
+installed; nothing depends on it.
+
 ## Accessibility
 
 Every viewer is audited with axe against WCAG A and AA, in both colour schemes,

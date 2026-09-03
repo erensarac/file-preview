@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { previewFile } from "@/app/actions/preview";
 import { hasClientParser, parseInBrowser } from "@/lib/adapters/client";
@@ -18,6 +18,26 @@ import PreviewPane from "./PreviewPane";
  * the `previewFile` action. Nothing else in the UI needs to know the
  * difference — both paths produce the same `PreviewDocument`.
  */
+/**
+ * `launchQueue` is a Chromium-only API with no TypeScript lib definition, so
+ * the shape this code relies on is declared here rather than reaching for
+ * `any`. Only the two members actually used are described.
+ */
+interface WindowWithLaunchQueue extends Window {
+  launchQueue?: {
+    setConsumer: (
+      consumer: (params: { files: FileSystemFileHandle[] }) => void,
+    ) => void;
+  };
+}
+
+function offlineMessage(label: string): string {
+  return (
+    `${label} files are converted on the server, so this one needs a ` +
+    `connection. CSV, Markdown, JSON, PDF and text files open offline.`
+  );
+}
+
 export default function FileWorkbench() {
   const [document, setDocument] = useState<PreviewDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +88,16 @@ export default function FileWorkbench() {
         return;
       }
 
+      /*
+       * Server-parsed formats are the only thing here that needs a network.
+       * Offline they must say so: the generic parser message would read as
+       * the app being broken, when in fact everything else still works.
+       */
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        fail(offlineMessage(spec.label));
+        return;
+      }
+
       const formData = new FormData();
       formData.append("file", file);
       const result = await previewFile(formData);
@@ -78,15 +108,40 @@ export default function FileWorkbench() {
         fail(result.error);
       }
     } catch (cause) {
-      fail(
-        cause instanceof Error
-          ? cause.message
-          : "Something went wrong opening that file.",
-      );
+      // `navigator.onLine` is false only when the device knows it is offline;
+      // a dropped connection mid-request throws instead, and lands here.
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        fail(offlineMessage("This"));
+      } else {
+        fail(
+          cause instanceof Error
+            ? cause.message
+            : "Something went wrong opening that file.",
+        );
+      }
     } finally {
       setBusy(false);
     }
   }, []);
+
+  /*
+   * A file the operating system handed over, because the app is installed and
+   * the manifest registered it as a handler for that type.
+   *
+   * Chromium only, and only when installed — `launchQueue` is simply absent
+   * everywhere else, which is why this is a capability check rather than a
+   * feature flag. It routes into the same `open` as a drop or a file picker,
+   * so nothing downstream knows the difference.
+   */
+  useEffect(() => {
+    const queue = (window as WindowWithLaunchQueue).launchQueue;
+    if (!queue) return;
+
+    queue.setConsumer(async ({ files }) => {
+      const [handle] = files;
+      if (handle) await open(await handle.getFile());
+    });
+  }, [open]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">

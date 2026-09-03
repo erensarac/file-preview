@@ -1,8 +1,9 @@
 # file
 
 Open a spreadsheet, document or data file in the browser without installing
-anything. PDF, Excel, Word, CSV, TSV, Markdown, JSON and plain text/code today;
-the architecture is built so adding the next format is a small, local change.
+anything. PDF, Excel, Word, images, CSV, TSV, Markdown, JSON and plain
+text/code today; the architecture is built so adding the next format is a
+small, local change.
 
 ## The idea
 
@@ -15,10 +16,13 @@ with." Format is our concern, not theirs.
 This is the one design decision everything else follows from. Each format
 declares a `runtime` in `lib/formats.ts`:
 
-| Runtime  | Formats                          | What happens                                                        |
-| -------- | -------------------------------- | ------------------------------------------------------------------- |
-| `client` | CSV, TSV, Markdown, JSON, text, PDF | Read with the File API in the tab. **Never sent anywhere.**       |
-| `server` | Excel (xlsx/xlsm), Word (docx)   | Posted to a server action, parsed in memory, discarded with the request. |
+| Runtime  | Formats                                     | What happens                                                             |
+| -------- | ------------------------------------------- | ------------------------------------------------------------------------ |
+| `client` | CSV, TSV, Markdown, JSON, text, PDF, images | Read with the File API in the tab. **Never sent anywhere.**              |
+| `server` | Excel (xlsx/xlsm), Word (docx)              | Posted to a server action, parsed in memory, discarded with the request. |
+
+Seven of the nine formats never leave the device; the two that do are the two
+whose parsers are too heavy to ship to a browser.
 
 Text formats stay local because they can — that privacy guarantee is the
 product's main differentiator, so it is given up only where a parser is genuinely
@@ -37,7 +41,12 @@ lib/highlight.ts        Shiki highlighter, built on first use and reused.
 lib/preview.ts          The Preview union every adapter returns and every viewer renders.
 lib/adapters/client.ts  Browser parsers (papaparse, marked, JSON, PDF passthrough).
 lib/adapters/server.ts  Server parsers (exceljs, mammoth). `server-only`.
+lib/parse-runner.ts     Runs a parse in a child process with a time and memory ceiling.
+lib/parse-child.mjs     What that process runs. Loaded by path, so it is not bundled.
+lib/telemetry.ts        The shape of a failure report, and what it may not carry.
 app/actions/preview.ts  The upload API, as a server action. Re-validates everything.
+app/actions/telemetry.ts Where a browser-side failure is reported. Validates every field.
+middleware.ts           Refuses a POST shaped like a server action but carrying none.
 components/             DropZone, PreviewPane, and one viewer per Preview kind.
 ```
 
@@ -463,6 +472,7 @@ npm install
 npm run dev        # http://localhost:3000
 npm run build
 npm run typecheck
+npm test           # the full Playwright suite, against a production build
 ```
 
 CI runs typecheck and the full suite on every pull request. The Chromium

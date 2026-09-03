@@ -391,6 +391,23 @@ there — including lines that impersonate other entries.
 - `lib/concurrency.ts` caps concurrent parses per instance and sheds the excess
   rather than queueing it. This protects one instance under load; it is not
   rate limiting, which needs a shared store and belongs at the edge.
+- Office parsing runs in a worker thread with a wall-clock budget
+  (`lib/parse-runner.ts`), so a document that never finishes can be **stopped**
+  rather than merely abandoned. `exceljs` and `mammoth` do enough synchronous
+  work to block the event loop, and a `Promise.race` against a timer would
+  return a response while the parse carried on holding memory and a
+  concurrency slot — which is why no timeout existed until there was somewhere
+  to put the work that could be killed. Measured on this runtime,
+  `terminate()` stops a worker running a loop that never yields in 4 ms.
+- That worker **does not bound memory**, and the reason is worth recording
+  because the obvious fix does not work. `resourceLimits` is accepted by the
+  worker and reported back correctly, and then ignored: with
+  `maxOldGenerationSizeMb: 16` the worker's heap reached 2,217 MB — 138x the
+  stated limit — and was still running when the measurement gave up. The only
+  mechanism that did enforce was `--max-old-space-size` in a separate process,
+  which on serverless means spawning a runtime per upload. So the ceiling is
+  the platform's: a function that exhausts its memory is killed, costing one
+  failed request and a cold start.
 - Server-parsed formats are capped at 4 MB because the deployment rejects
   larger request bodies at its edge, before any of this code runs. Raising a
   cap past that ceiling **fails the build** rather than shipping a limit the

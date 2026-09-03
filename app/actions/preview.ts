@@ -27,6 +27,7 @@ import {
   sizeBucket,
   type FailurePhase,
 } from "@/lib/telemetry";
+import { ParseTimeoutError } from "@/lib/parse-runner";
 import { assertSafeArchive, ZipBombError } from "@/lib/zip-guard";
 
 /**
@@ -120,6 +121,16 @@ export async function previewFile(formData: FormData): Promise<PreviewResult> {
       // rise in locked files is worth being able to see.
       record("guard");
       return { ok: false, error: encryptedMessage(spec.label) };
+    }
+
+    if (error instanceof ParseTimeoutError) {
+      // Distinct from "we couldn't read it": the file may be perfectly valid
+      // and simply too much work, which is a different thing to be told.
+      record("parse");
+      return {
+        ok: false,
+        error: `This ${spec.label} file took too long to open, so we stopped. It may simply be too complex to preview.`,
+      };
     }
 
     if (error instanceof ZipBombError) {

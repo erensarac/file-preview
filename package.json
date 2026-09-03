@@ -15,6 +15,7 @@
     "test": "playwright test"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "dompurify": "^3.4.12",
     "exceljs": "^4.4.0",
     "isomorphic-dompurify": "^3.19.0",

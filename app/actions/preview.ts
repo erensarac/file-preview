@@ -21,6 +21,12 @@ import {
   EncryptedFileError,
   looksEncryptedOffice,
 } from "@/lib/encrypted";
+import {
+  formatFailure,
+  safeErrorName,
+  sizeBucket,
+  type FailurePhase,
+} from "@/lib/telemetry";
 import { assertSafeArchive, ZipBombError } from "@/lib/zip-guard";
 
 /**
@@ -92,22 +98,43 @@ export async function previewFile(formData: FormData): Promise<PreviewResult> {
       };
     }
 
+    /*
+     * One structured line per failure, on a stable prefix so it can be
+     * searched and counted. It carries the format, the phase and the error's
+     * class — never the filename, the message, or the exact size. See
+     * `lib/telemetry.ts` for why each of those is excluded.
+     */
+    const record = (phase: FailurePhase) =>
+      console.error(
+        formatFailure({
+          formatId: spec.id,
+          runtime: spec.runtime,
+          phase,
+          errorName: safeErrorName(error),
+          sizeBucket: sizeBucket(file.size),
+        }),
+      );
+
     if (error instanceof EncryptedFileError) {
-      // Nothing to log: no parser ran, and the file being locked is not a
-      // failure on our side.
+      // Recorded, not because it is our failure — it is not — but because a
+      // rise in locked files is worth being able to see.
+      record("guard");
       return { ok: false, error: encryptedMessage(spec.label) };
     }
 
     if (error instanceof ZipBombError) {
+      // The numbers go to the warning; the countable line goes to `record`.
       console.warn(`Rejected ${spec.id} archive: ${error.message}`);
+      record("guard");
       return {
         ok: false,
         error: `This ${spec.label} file expands to far more than its size suggests, so we didn't open it.`,
       };
     }
 
-    // Parser errors can quote file contents, so log the detail and return a
-    // short message instead of forwarding it to the browser verbatim.
+    // Parser errors can quote file contents, so the detail is logged for a
+    // developer and never forwarded to the browser.
+    record("parse");
     console.error(`Failed to preview ${spec.id} file`, error);
     return {
       ok: false,

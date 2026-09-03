@@ -314,6 +314,44 @@ keyboard paths are covered separately: sheet tabs are one tab stop with arrow
 keys inside, column resize handles take arrow keys and Enter for auto-fit, and
 scroll regions are focusable so they can be scrolled without a pointer.
 
+## What is measured
+
+Two things, and it is worth being precise about both, because a site whose
+claim is "your file never leaves your device" has to be careful what it does
+send.
+
+**Traffic**, through Vercel's own analytics. Cookieless and served from this
+origin, so no visitor data crosses to another domain and there is nothing to
+put a consent banner in front of — which here would be self-defeating. It
+renders on production deployments only, so a preview does not pollute the
+numbers and local development sends nothing. The cost of that gate is that the
+test suite never sees it render.
+
+**Failures**, as one structured line per failed open:
+
+```
+file.failure format=xlsx runtime=server phase=parse error=TypeError size=<4MB
+```
+
+Three things are deliberately absent, and specs assert their absence:
+
+- **The filename.** Often the most sensitive part of a document —
+  `redundancies-final.xlsx` says plenty without being opened.
+- **The error message.** Parser errors quote file contents, which is exactly
+  why the message shown to the user is generic; logging what we refuse to
+  display would be perverse.
+- **The exact size.** Weakly identifying across reports, and a band answers
+  every question worth asking. The band is computed **on the client**, before
+  anything is sent — an earlier version sent the byte count and banded it on
+  arrival, which meant the precise size had already left the device. A spec
+  caught that.
+
+A client-parsed file therefore still touches the network exactly never when it
+opens, and sends this one line when it does not. Every field of it is validated
+on arrival rather than trusted: the action is reachable by anyone and its
+output goes into a log, so an unchecked field is a way to write arbitrary text
+there — including lines that impersonate other entries.
+
 ## Safety notes
 
 - Parser HTML output (Markdown, Word) goes through DOMPurify **in the adapter**,

@@ -9,6 +9,8 @@ import {
   useState,
 } from "react";
 
+import { reportClientFailure } from "@/app/actions/telemetry";
+import { safeErrorName, sizeBucket } from "@/lib/telemetry";
 import { fitZoom, zoomInFrom, zoomOutFrom } from "@/lib/zoom";
 
 /**
@@ -174,7 +176,16 @@ export default function PdfViewer({ bytes }: { bytes: Uint8Array }) {
         setSizes(estimate);
         setDoc(loaded);
       } catch (cause) {
-        if (!cancelled) setError(messageFor(cause));
+        if (cancelled) return;
+        setError(messageFor(cause));
+        // This viewer only ever renders PDFs, so it can name the format
+        // itself rather than being told.
+        void reportClientFailure({
+          formatId: "pdf",
+          phase: "render",
+          errorName: safeErrorName(cause),
+          sizeBucket: sizeBucket(bytes.byteLength),
+        });
       }
     })();
 

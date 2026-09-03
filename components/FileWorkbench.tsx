@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { previewFile } from "@/app/actions/preview";
+import { reportClientFailure } from "@/app/actions/telemetry";
 import { hasClientParser, parseInBrowser } from "@/lib/adapters/client";
 import { detectFormat, formatBytes } from "@/lib/formats";
 import type { PreviewDocument } from "@/lib/preview";
+import { safeErrorName, sizeBucket } from "@/lib/telemetry";
 
 import DropZone from "./DropZone";
 import PreviewPane from "./PreviewPane";
@@ -110,7 +112,26 @@ export default function FileWorkbench() {
       }
 
       if (spec.runtime === "client" && hasClientParser(spec.id)) {
-        succeed(await parseInBrowser(file, spec.id));
+        try {
+          succeed(await parseInBrowser(file, spec.id));
+        } catch (cause) {
+          /*
+           * A file parsed in the browser fails in the browser, where nothing
+           * reaches us. This is the one thing a client-runtime format sends
+           * anywhere, and only after it has already failed: the format, the
+           * phase and the error's class. The file, its name and the message
+           * stay on the device.
+           */
+          void reportClientFailure({
+            formatId: spec.id,
+            phase: "parse",
+            errorName: safeErrorName(cause),
+            sizeBucket: sizeBucket(file.size),
+          });
+          // Rethrown so the message the user sees is unchanged — this adds an
+          // observation, not a behaviour.
+          throw cause;
+        }
         return;
       }
 

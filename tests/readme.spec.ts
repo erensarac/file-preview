@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 
 import { FORMATS } from "@/lib/formats";
+import { LANDING_PAGES } from "@/lib/landing";
 
 /**
  * The README's runtime table, checked against the registry it describes.
@@ -78,4 +79,24 @@ test.describe("the README's runtime table", () => {
     expect(claim![1]!.toLowerCase()).toBe(words[client]);
     expect(claim![2]!.toLowerCase()).toBe(words[FORMATS.length]);
   });
+});
+
+/**
+ * The landing pages are counted in prose too, and that count was wrong: the
+ * README said "one page per format" while six of the nine had one. The spec
+ * that already existed could not catch it, because it checks that every page
+ * names a known format — the direction that was never the problem.
+ *
+ * The reverse cannot be asserted directly: not every format is *meant* to have
+ * a page. So the number is what gets checked, which is the thing that was
+ * actually false.
+ */
+test("the README counts the landing pages correctly", () => {
+  const claim = README.match(/a page for (\w+) of the (\w+)\s+formats/);
+  expect(claim, "the sentence counting the landing pages is gone").toBeTruthy();
+
+  const words = ["zero", "one", "two", "three", "four", "five", "six",
+    "seven", "eight", "nine", "ten", "eleven", "twelve"];
+  expect(claim![1]!.toLowerCase()).toBe(words[LANDING_PAGES.length]);
+  expect(claim![2]!.toLowerCase()).toBe(words[FORMATS.length]);
 });

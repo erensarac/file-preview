@@ -124,11 +124,12 @@ test.describe("with no connection", () => {
 
     await page.setInputFiles('input[type="file"]', fixture("report.xlsx"));
 
-    // The generic parser message would read as the app being broken, when in
-    // fact everything except Excel and Word still works.
+    // The generic parser message ("Failed to fetch", as CI first saw) reads as
+    // the app being broken, when in fact everything except Excel and Word
+    // still works.
     const alert = page.locator('main [role="alert"]');
-    await expect(alert).toContainText("needs a connection");
-    await expect(alert).toContainText("open offline");
+    await expect(alert).toContainText("couldn't reach the server");
+    await expect(alert).toContainText("no connection");
   });
 });
 

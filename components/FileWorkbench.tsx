@@ -31,10 +31,11 @@ interface WindowWithLaunchQueue extends Window {
   };
 }
 
-function offlineMessage(label: string): string {
+function unreachableMessage(label: string): string {
   return (
-    `${label} files are converted on the server, so this one needs a ` +
-    `connection. CSV, Markdown, JSON, PDF and text files open offline.`
+    `We couldn't reach the server to convert this ${label} file. ` +
+    `Files read in your browser — CSV, Markdown, JSON, PDF and text — ` +
+    `open with no connection.`
   );
 }
 
@@ -88,19 +89,34 @@ export default function FileWorkbench() {
         return;
       }
 
-      /*
-       * Server-parsed formats are the only thing here that needs a network.
-       * Offline they must say so: the generic parser message would read as
-       * the app being broken, when in fact everything else still works.
-       */
-      if (typeof navigator !== "undefined" && navigator.onLine === false) {
-        fail(offlineMessage(spec.label));
-        return;
-      }
-
       const formData = new FormData();
       formData.append("file", file);
-      const result = await previewFile(formData);
+
+      /*
+       * Server-parsed formats are the only thing here that needs a network,
+       * and when they cannot reach it they must say so — the generic parser
+       * message reads as the app being broken, when in fact every other format
+       * still works with no connection at all.
+       *
+       * The signal is the action *throwing* rather than returning. A file the
+       * parser cannot read comes back as `{ ok: false }` with its own message
+       * and never lands here, so a throw means the conversion never happened:
+       * no network, or a server that failed outright. Both are the same thing
+       * to the person holding the file.
+       *
+       * Deliberately not `navigator.onLine`, which was the first attempt and
+       * is not trustworthy: it reports whether the device has *a* network, not
+       * whether this server is reachable. A captive-portal wifi reports online,
+       * and a browser driven offline in CI reported online too — which is how
+       * this was caught, showing "Failed to fetch" instead of the message.
+       */
+      let result: Awaited<ReturnType<typeof previewFile>>;
+      try {
+        result = await previewFile(formData);
+      } catch {
+        fail(unreachableMessage(spec.label));
+        return;
+      }
 
       if (result.ok) {
         succeed(result.document);
@@ -108,17 +124,11 @@ export default function FileWorkbench() {
         fail(result.error);
       }
     } catch (cause) {
-      // `navigator.onLine` is false only when the device knows it is offline;
-      // a dropped connection mid-request throws instead, and lands here.
-      if (typeof navigator !== "undefined" && navigator.onLine === false) {
-        fail(offlineMessage("This"));
-      } else {
-        fail(
-          cause instanceof Error
-            ? cause.message
-            : "Something went wrong opening that file.",
-        );
-      }
+      fail(
+        cause instanceof Error
+          ? cause.message
+          : "Something went wrong opening that file.",
+      );
     } finally {
       setBusy(false);
     }

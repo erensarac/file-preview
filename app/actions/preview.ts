@@ -16,6 +16,11 @@ import { detectFormat } from "@/lib/formats";
 import { hasServerParser, parseOnServer } from "@/lib/adapters/server";
 import type { PreviewResult } from "@/lib/preview";
 import { createBulkhead, TooBusyError } from "@/lib/concurrency";
+import {
+  encryptedMessage,
+  EncryptedFileError,
+  looksEncryptedOffice,
+} from "@/lib/encrypted";
 import { assertSafeArchive, ZipBombError } from "@/lib/zip-guard";
 
 /**
@@ -61,6 +66,15 @@ export async function previewFile(formData: FormData): Promise<PreviewResult> {
 
       // Before the parser is allowed to allocate anything, check what the
       // archive claims it will expand to.
+      /*
+       * Checked before the archive guard, because a locked Office file is not
+       * an archive: it is an OLE compound file wrapping the real package. The
+       * zip reader would reject it as malformed and the reason would be lost.
+       */
+      if (looksEncryptedOffice(bytes)) {
+        throw new EncryptedFileError();
+      }
+
       assertSafeArchive(bytes);
 
       return parseOnServer(
@@ -78,6 +92,12 @@ export async function previewFile(formData: FormData): Promise<PreviewResult> {
       };
     }
 
+    if (error instanceof EncryptedFileError) {
+      // Nothing to log: no parser ran, and the file being locked is not a
+      // failure on our side.
+      return { ok: false, error: encryptedMessage(spec.label) };
+    }
+
     if (error instanceof ZipBombError) {
       console.warn(`Rejected ${spec.id} archive: ${error.message}`);
       return {
@@ -91,7 +111,9 @@ export async function previewFile(formData: FormData): Promise<PreviewResult> {
     console.error(`Failed to preview ${spec.id} file`, error);
     return {
       ok: false,
-      error: `We couldn't read this ${spec.label} file. It may be corrupt or password-protected.`,
+      // No longer hedges about passwords: an encrypted file is now identified
+      // before this point, so a file reaching here really is unreadable.
+      error: `We couldn't read this ${spec.label} file. It may be corrupt, or saved in a format we don't recognise.`,
     };
   }
 }

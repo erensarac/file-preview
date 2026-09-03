@@ -49,6 +49,32 @@ function layoutOf(sizes: PageSize[], zoom: number) {
   return { offsets, total: Math.max(0, y - PAGE_GAP) };
 }
 
+/**
+ * What to show when pdf.js refuses a document.
+ *
+ * Its `PasswordException` arrives with the message "No password given", which
+ * is true and useless: it reads as something the site failed to do. A locked
+ * PDF is not a broken one, and the person holding it very likely knows the
+ * password — so it is worth naming.
+ *
+ * Unlike Excel and Word, a PDF is opened on the reader's own device, so a
+ * password box here would keep the password local. That is a feature rather
+ * than a policy question, and it has not been built; the message says so
+ * rather than implying the file is at fault.
+ */
+function messageFor(cause: unknown): string {
+  if (cause instanceof Error && cause.name === "PasswordException") {
+    return (
+      "This PDF is password-protected. Re-save it without protection and it " +
+      "will open — there is no password box here yet."
+    );
+  }
+
+  return cause instanceof Error && cause.message
+    ? cause.message
+    : "This PDF could not be opened.";
+}
+
 type LoadingTask = ReturnType<
   typeof import("pdfjs-dist/legacy/build/pdf.mjs").getDocument
 >;
@@ -148,13 +174,7 @@ export default function PdfViewer({ bytes }: { bytes: Uint8Array }) {
         setSizes(estimate);
         setDoc(loaded);
       } catch (cause) {
-        if (!cancelled) {
-          setError(
-            cause instanceof Error && cause.message
-              ? cause.message
-              : "This PDF could not be opened.",
-          );
-        }
+        if (!cancelled) setError(messageFor(cause));
       }
     })();
 

@@ -257,6 +257,22 @@ export async function buildFixtures(): Promise<void> {
     ].join("\n"),
   );
 
+  /*
+   * Far past the old 2,000-row cap, and past what fits in the DOM: the viewer
+   * mounts only the rows in view, so this is the fixture that tells the
+   * difference between "all the rows are there" and "the first screenful is".
+   *
+   * The needle sits deep enough that it can only be reached by finding it —
+   * row 41,000 is about 1.3 MB into the file and thousands of screens down.
+   */
+  const LARGE_ROWS = 50_000;
+  const large = ["Id,City,Amount,Note"];
+  for (let row = 1; row <= LARGE_ROWS; row += 1) {
+    const city = row === 41_000 ? "Trabzon" : `City ${row % 90}`;
+    large.push(`${row},${city},${(row * 7) % 5000},row ${row}`);
+  }
+  writeFileSync(at("large.csv"), large.join("\n"));
+
   // Carries an inline <script>: the sanitizer must drop it.
   writeFileSync(
     at("notes.md"),

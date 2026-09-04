@@ -40,12 +40,69 @@ concurrency:
   group: verify-deployment
   cancel-in-progress: false
 
+# The two jobs below both POST at the same origin, and one shared rule counts
+# every POST from one address. Running them together would mean the upload
+# check spending budget the rate-limit check is trying to measure, so they
+# queue: `rate-limits` waits for `office-upload` to finish and for the window
+# to have lapsed.
+
 jobs:
+  # Three assumptions have been resting on "it works locally" since they were
+  # written, and each fails in a way a local run cannot reproduce: the traced
+  # child-process file, the platform's willingness to spawn one, and the cost
+  # of doing so on an instance that was not already warm. One real upload
+  # answers all three.
+  office-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Resolve the Playwright version
+        id: playwright-version
+        run: |
+          echo "value=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the browser
+        id: browser-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.value }}
+
+      - name: Install Chromium
+        if: steps.browser-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Chromium system dependencies
+        if: steps.browser-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Upload an Excel file to the deployment
+        env:
+          DEPLOYMENT_URL: ${{ inputs.base_url }}
+        run: npx playwright test --config playwright.deployment.config.ts
+
   rate-limits:
+    needs: office-upload
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
+      # The uploads above spent from the same per-address budget this job is
+      # about to measure. Waiting out the window is what makes its first burst
+      # start from zero rather than from wherever the other job left it.
+      - name: Let the rate-limit window lapse
+        run: sleep 70
+
       - uses: actions/checkout@v4
 
       - name: Rate limits

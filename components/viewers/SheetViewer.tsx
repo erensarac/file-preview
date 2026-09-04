@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   autoFitWidth,
@@ -9,6 +17,7 @@ import {
   MIN_COLUMN_WIDTH,
 } from "@/lib/column-widths";
 import type { Sheet } from "@/lib/preview";
+import { findMatches, scrollTopFor, step } from "@/lib/sheet-find";
 
 /**
  * Row height in px. The rows set it explicitly rather than letting content
@@ -61,6 +70,15 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
   );
   const drag = useRef<Drag | null>(null);
 
+  const [query, setQuery] = useState("");
+  const [matchIndex, setMatchIndex] = useState(0);
+  /*
+   * Deferred so typing stays responsive. Scanning every cell of a large sheet
+   * is fast but not free, and doing it between keystrokes is what would make
+   * the input feel heavy on exactly the files this exists for.
+   */
+  const deferredQuery = useDeferredValue(query);
+
   const widths = widthsBySheet[active] ?? [];
 
   const sheet = sheets[Math.min(active, sheets.length - 1)]!;
@@ -68,6 +86,46 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
     (max, row) => Math.max(max, row.length),
     0,
   );
+
+  const matches = useMemo(
+    () => findMatches(sheet.rows, deferredQuery),
+    [sheet, deferredQuery],
+  );
+  /** Clamped rather than reset: a shrinking result set should not jump home. */
+  const current = matches.length === 0 ? -1 : Math.min(matchIndex, matches.length - 1);
+
+  /**
+   * Scrolling to a match is the only reason this component moves the scroller
+   * itself. The row it wants is usually not mounted, so it cannot be reached
+   * with `scrollIntoView` — the position is computed from the row index and
+   * the window follows from the scroll event, the same way it does for a drag
+   * of the scrollbar.
+   */
+  const goTo = useCallback(
+    (index: number) => {
+      const element = scroller.current;
+      const match = matches[index];
+      if (!element || !match) return;
+      setMatchIndex(index);
+      element.scrollTop = scrollTopFor(
+        match.row,
+        ROW_HEIGHT,
+        element.clientHeight,
+        sheet.rows.length,
+      );
+    },
+    [matches, sheet.rows.length],
+  );
+
+  // A new search starts at the first match rather than wherever the last one
+  // left off, and takes the view with it.
+  useEffect(() => {
+    setMatchIndex(0);
+    if (matches.length > 0) goTo(0);
+    // `goTo` depends on `matches`; running this on every `goTo` identity would
+    // drag the view back to the first match after every Next.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deferredQuery, active]);
 
   /**
    * Column widths are measured once per sheet and then pinned.
@@ -226,6 +284,7 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
   const start = Math.min(rowWindow.start, Math.max(0, sheet.rows.length - 1));
   const end = Math.min(rowWindow.end, sheet.rows.length);
   const visibleRows = sheet.rows.slice(start, end);
+  const matchable = deferredQuery.trim().toLowerCase();
   const totalWidth =
     GUTTER_WIDTH + widths.reduce((sum, width) => sum + width, 0);
 
@@ -282,6 +341,66 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
         </div>
       )}
 
+      {columnCount > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2 text-xs">
+          <label htmlFor="sheet-find" className="sr-only">
+            Find in sheet
+          </label>
+          <input
+            id="sheet-find"
+            type="search"
+            value={query}
+            placeholder="Find in sheet"
+            data-testid="sheet-find"
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setQuery("");
+                return;
+              }
+              if (event.key !== "Enter" || matches.length === 0) return;
+              // Enter for the next match, Shift+Enter for the previous one —
+              // what every find bar does, so the hands already know it.
+              event.preventDefault();
+              goTo(step(current, matches.length, event.shiftKey ? -1 : 1));
+            }}
+            className="w-44 rounded border border-line bg-canvas px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+          />
+          {/*
+            Announced, because the result of a search is not visible to
+            someone who cannot see the highlighted cell. `role="status"` is
+            polite: it waits rather than interrupting what is being read.
+          */}
+          <span role="status" data-testid="find-count" className="text-muted">
+            {query.trim() === ""
+              ? ""
+              : matches.length === 0
+                ? "No matches"
+                : `${current + 1} of ${matches.length.toLocaleString()}`}
+          </span>
+          <div className="ml-auto flex items-center gap-1">
+            <button
+              type="button"
+              aria-label="Previous match"
+              disabled={matches.length === 0}
+              onClick={() => goTo(step(current, matches.length, -1))}
+              className="rounded border border-line px-2 py-1 disabled:opacity-40"
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              aria-label="Next match"
+              disabled={matches.length === 0}
+              onClick={() => goTo(step(current, matches.length, 1))}
+              className="rounded border border-line px-2 py-1 disabled:opacity-40"
+            >
+              ↓
+            </button>
+          </div>
+        </div>
+      )}
+
       {columnCount === 0 ? (
         <p className="p-8 text-center text-sm text-muted">This sheet is empty.</p>
       ) : (
@@ -298,8 +417,21 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
             : { role: "region", "aria-label": sheet.name })}
           className="viewer-scroller focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
         >
+          {/*
+            `aria-rowcount` because the DOM is not the sheet.
+
+            Only the rows in view are mounted, so without this a screen reader
+            is told the table has about sixty rows whichever file is open —
+            an honest-looking lie that no automated rule catches, because
+            nothing in the markup contradicts anything else. The count is the
+            sheet's own, plus the header row, and each row carries its real
+            index so "row 12,043 of 50,000" is answerable while twelve
+            thousand of those rows do not exist.
+          */}
           <table
             ref={table}
+            aria-rowcount={sheet.rows.length + 1}
+            aria-colcount={columnCount + 1}
             className="table-fixed border-collapse text-sm"
             style={widths.length > 0 ? { width: totalWidth } : undefined}
           >
@@ -311,7 +443,7 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
             </colgroup>
 
             <thead>
-              <tr>
+              <tr aria-rowindex={1}>
                 <th className="sticky left-0 top-0 z-20 border-b border-r border-line bg-canvas px-2 py-1.5 text-xs font-normal text-muted" />
                 {widths.map((_, column) => (
                   <th
@@ -357,30 +489,66 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
             <tbody>
               {/* Spacers stand in for the unmounted rows so the scrollbar
                   reflects the full sheet. */}
-              {start > 0 && <tr style={{ height: start * ROW_HEIGHT }} />}
+              {/* Hidden from assistive technology: a spacer is scrollbar
+                  arithmetic, not a row of the sheet, and announcing it as an
+                  empty row is the same lie in a different place. */}
+              {start > 0 && (
+                <tr aria-hidden="true" style={{ height: start * ROW_HEIGHT }} />
+              )}
 
               {visibleRows.map((row, offset) => {
                 const rowIndex = start + offset;
+                const here = matches[current];
                 return (
-                  <tr key={rowIndex} style={{ height: ROW_HEIGHT }}>
+                  <tr
+                    key={rowIndex}
+                    // The row's place in the sheet, not in the DOM.
+                    aria-rowindex={rowIndex + 2}
+                    style={{ height: ROW_HEIGHT }}
+                  >
                     <td className="sticky left-0 z-10 border-b border-r border-line bg-canvas px-2 text-right text-xs tabular-nums text-muted">
                       {rowIndex + 1}
                     </td>
-                    {widths.map((_, column) => (
-                      <td
-                        key={column}
-                        className="truncate border-b border-r border-line px-3"
-                        title={row[column] || undefined}
-                      >
-                        {row[column] ?? ""}
-                      </td>
-                    ))}
+                    {widths.map((_, column) => {
+                      const value = row[column];
+                      const hit =
+                        matchable !== "" &&
+                        Boolean(value) &&
+                        value!.toLowerCase().includes(matchable);
+                      const isCurrent =
+                        hit && here?.row === rowIndex && here.column === column;
+
+                      return (
+                        <td
+                          key={column}
+                          data-testid={isCurrent ? "match-current" : undefined}
+                          // The whole cell rather than the matched substring:
+                          // cells are truncated to their column width, so a
+                          // highlight inside the text can be the part that is
+                          // clipped, and the row would look like a miss.
+                          className={[
+                            "truncate border-b border-r border-line px-3",
+                            isCurrent
+                              ? "bg-accent text-on-accent"
+                              : hit
+                                ? "bg-accent/25"
+                                : "",
+                          ].join(" ")}
+                          title={value || undefined}
+                        >
+                          {value ?? ""}
+                        </td>
+                      );
+                    })}
                   </tr>
                 );
               })}
 
               {end < sheet.rows.length && (
-                <tr style={{ height: (sheet.rows.length - end) * ROW_HEIGHT }} />
+                <tr
+                  aria-hidden="true"
+                  style={{ height: (sheet.rows.length - end) * ROW_HEIGHT }}
+                />
               )}
             </tbody>
           </table>

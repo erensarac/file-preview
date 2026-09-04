@@ -9,7 +9,6 @@
 
 import { extensionOf, FORMATS, getFormat, type FormatId } from "../formats";
 import {
-  MAX_PREVIEW_ROWS,
   type Preview,
   type PreviewDocument,
 } from "../preview";
@@ -38,13 +37,22 @@ const parseDelimited =
       );
     }
 
-    const totalRows = result.data.length;
-    const rows = result.data.slice(0, MAX_PREVIEW_ROWS);
-    if (totalRows > rows.length) {
-      notices.push(
-        `Showing the first ${rows.length.toLocaleString()} of ${totalRows.toLocaleString()} rows.`,
-      );
-    }
+    /*
+     * Every row, not the first `MAX_PREVIEW_ROWS` of them.
+     *
+     * That cap belongs to the server adapter, where it bounds what a parser
+     * builds inside a request. Here it bounded nothing: papaparse has already
+     * produced the whole array by this line, so slicing it cost the rows
+     * without saving the memory — the file was read in the tab, no instance
+     * was at risk, and a 50,000-row CSV was cut to 2,000 for a reason that
+     * belonged to the other runtime.
+     *
+     * The viewer mounts only the rows in view and sizes columns from a sample,
+     * so what this hands over is bounded by the file's own size cap and
+     * nothing else.
+     */
+    const rows = result.data;
+    const totalRows = rows.length;
 
     return {
       kind: "sheet",

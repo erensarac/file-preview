@@ -415,8 +415,21 @@ there — including lines that impersonate other entries.
   and MIME type from the client are treated as untrusted.
 - Parser errors are logged server-side and replaced with a generic message,
   since they can quote file contents.
-- Spreadsheets are capped at 2,000 rows and 200 columns per sheet for preview,
-  with a notice when truncation happens.
+- **Server-parsed** spreadsheets are capped at 2,000 rows and 200 columns per
+  sheet, with a notice when truncation happens. The cap bounds what a parser
+  builds inside a request, next to the memory ceiling and the timeout.
+- **Browser-parsed** sheets have no row cap, because there is nothing there for
+  one to protect: the file was never uploaded, no instance is at risk, and
+  papaparse has already produced every row before our code sees it — so cutting
+  the array cost the rows without saving the memory. A 50,000-row CSV shows
+  50,000 rows. What keeps that affordable is the viewer, which mounts only the
+  rows in view and sizes columns from a sample rather than from every cell.
+- Because only the mounted rows exist, the browser's own Ctrl+F searches a
+  window onto the file rather than the file. The sheet viewer therefore has its
+  own find, which scans every cell and scrolls a match into view even when its
+  row has not been rendered yet. The grid reports its real row count to
+  assistive technology (`aria-rowcount`, and a real `aria-rowindex` per row)
+  rather than the number that happens to be mounted.
 - Office formats are zip archives, so `lib/zip-guard.ts` reads the central
   directory — the archive's own record of each entry's compressed and expanded
   size — and refuses implausible expansion **before** a parser allocates

@@ -1,0 +1,38 @@
+# Keeping dependencies current, with the suite as the safety net.
+#
+# 240 tests and a typecheck run on every pull request, which is what makes
+# taking routine updates reasonable rather than reckless: a bump that breaks
+# something is a red check rather than a discovery in production.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One pull request for the routine bumps rather than fifteen. Grouped
+      # updates are only sensible because the suite is thorough enough to say
+      # whether the group is safe; without that this would be a rubber stamp.
+      routine:
+        update-types:
+          - minor
+          - patch
+    # Majors arrive on their own, because they are a decision rather than
+    # maintenance.
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+# ── What this does not cover ──────────────────────────────────────────────
+#
+# `xlsx` is installed from a tarball URL rather than the registry, because the
+# npm copy is four years stale with unfixed advisories (see CONTRIBUTING).
+# Dependabot updates registry versions, so it cannot see that dependency at
+# all — and neither can `npm audit`. The most security-sensitive parser in the
+# project is therefore the one piece of automation here does not watch. Bumping
+# it is a manual job, and the version to bump to is at
+# https://cdn.sheetjs.com/.

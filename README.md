@@ -456,6 +456,14 @@ there — including lines that impersonate other entries.
   the array cost the rows without saving the memory. A 50,000-row CSV shows
   50,000 rows. What keeps that affordable is the viewer, which mounts only the
   rows in view and sizes columns from a sample rather than from every cell.
+- A column sorts from its header — ascending, descending, then back to the
+  file's own order, which is why a third click exists. Sorting is a view: the
+  rows are never reordered, so clearing it is exact, and a sorted row keeps the
+  number it has in the file so the view can still be compared against the
+  original. Blanks sink in both directions, numbers compare as numbers, and
+  text compares by locale. On a truncated server-parsed sheet the sort says
+  what it covered, because the largest value among the first 2,000 rows is not
+  the largest in the file.
 - Because only the mounted rows exist, the browser's own Ctrl+F searches a
   window onto the file rather than the file. The sheet viewer therefore has its
   own find, which scans every cell and scrolls a match into view even when its

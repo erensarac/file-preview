@@ -18,6 +18,11 @@ import {
 } from "@/lib/column-widths";
 import type { Sheet } from "@/lib/preview";
 import { findMatches, scrollTopFor, step } from "@/lib/sheet-find";
+import {
+  nextDirection,
+  sortedOrder,
+  type SortDirection,
+} from "@/lib/sheet-sort";
 
 /**
  * Row height in px. The rows set it explicitly rather than letting content
@@ -78,6 +83,11 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
    * the input feel heavy on exactly the files this exists for.
    */
   const deferredQuery = useDeferredValue(query);
+  const [onlyMatching, setOnlyMatching] = useState(false);
+  const [sort, setSort] = useState<{
+    column: number;
+    direction: SortDirection;
+  } | null>(null);
 
   const widths = widthsBySheet[active] ?? [];
 
@@ -87,9 +97,44 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
     0,
   );
 
+  /**
+   * What is on screen, as indices into the sheet's own rows.
+   *
+   * Filter first, then sort: sorting a set and then removing from it is the
+   * same result for more work, and keeping the two steps in this order means
+   * the sort is always over exactly what the reader can see.
+   *
+   * The rows themselves are never reordered or copied. This is a way of
+   * reading them, which is what makes clearing a sort exact rather than a
+   * best effort at putting them back.
+   */
+  const order = useMemo(() => {
+    const needle = onlyMatching ? deferredQuery.trim().toLowerCase() : "";
+
+    let base: number[];
+    if (needle === "") {
+      base = Array.from({ length: sheet.rows.length }, (_, index) => index);
+    } else {
+      base = [];
+      for (let row = 0; row < sheet.rows.length; row += 1) {
+        if (
+          sheet.rows[row]!.some(
+            (cell) => cell && cell.toLowerCase().includes(needle),
+          )
+        ) {
+          base.push(row);
+        }
+      }
+    }
+
+    return sort ? sortedOrder(sheet.rows, base, sort.column, sort.direction) : base;
+  }, [sheet, sort, onlyMatching, deferredQuery]);
+
+  const hidden = sheet.rows.length - order.length;
+
   const matches = useMemo(
-    () => findMatches(sheet.rows, deferredQuery),
-    [sheet, deferredQuery],
+    () => findMatches(sheet.rows, deferredQuery, order),
+    [sheet, deferredQuery, order],
   );
   /** Clamped rather than reset: a shrinking result set should not jump home. */
   const current = matches.length === 0 ? -1 : Math.min(matchIndex, matches.length - 1);
@@ -108,13 +153,15 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
       if (!element || !match) return;
       setMatchIndex(index);
       element.scrollTop = scrollTopFor(
-        match.row,
+        // The place on screen, not the row of the file: after a sort they are
+        // different numbers and only one of them scrolls anywhere useful.
+        match.position,
         ROW_HEIGHT,
         element.clientHeight,
-        sheet.rows.length,
+        order.length,
       );
     },
-    [matches, sheet.rows.length],
+    [matches, order.length],
   );
 
   // A new search starts at the first match rather than wherever the last one
@@ -188,6 +235,13 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
   // sheet's scroll position.
   useEffect(() => {
     scroller.current?.scrollTo({ top: 0 });
+  }, [active]);
+
+  // A sort belongs to the column it was applied to, and column C of another
+  // sheet is a different column. Carrying it across would silently reorder a
+  // sheet the reader has not sorted.
+  useEffect(() => {
+    setSort(null);
   }, [active]);
 
   const setWidth = useCallback(
@@ -281,9 +335,9 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
     );
   };
 
-  const start = Math.min(rowWindow.start, Math.max(0, sheet.rows.length - 1));
-  const end = Math.min(rowWindow.end, sheet.rows.length);
-  const visibleRows = sheet.rows.slice(start, end);
+  const start = Math.min(rowWindow.start, Math.max(0, order.length - 1));
+  const end = Math.min(rowWindow.end, order.length);
+  const visiblePositions = order.slice(start, end);
   const matchable = deferredQuery.trim().toLowerCase();
   const totalWidth =
     GUTTER_WIDTH + widths.reduce((sum, width) => sum + width, 0);
@@ -378,6 +432,34 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
                 ? "No matches"
                 : `${current + 1} of ${matches.length.toLocaleString()}`}
           </span>
+          <label className="flex items-center gap-1.5 text-muted">
+            <input
+              type="checkbox"
+              checked={onlyMatching}
+              data-testid="only-matching"
+              onChange={(event) => setOnlyMatching(event.target.checked)}
+            />
+            Only matching rows
+          </label>
+          {hidden > 0 && (
+            <span data-testid="hidden-count" className="text-muted">
+              {hidden.toLocaleString()} hidden
+            </span>
+          )}
+          {/*
+            Said out loud when it is true, because the alternative is a sorted
+            column that quietly answers a different question. On a truncated
+            sheet the largest value on screen is the largest of what was sent,
+            not of the file — and a reader who sorted descending to find the
+            maximum has every reason to think otherwise.
+          */}
+          {sort && sheet.totalRows > sheet.rows.length && (
+            <span data-testid="sort-scope" className="text-muted">
+              Sorted within the first {sheet.rows.length.toLocaleString()} rows
+              shown
+            </span>
+          )}
+
           <div className="ml-auto flex items-center gap-1">
             <button
               type="button"
@@ -430,7 +512,7 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
           */}
           <table
             ref={table}
-            aria-rowcount={sheet.rows.length + 1}
+            aria-rowcount={order.length + 1}
             aria-colcount={columnCount + 1}
             className="table-fixed border-collapse text-sm"
             style={widths.length > 0 ? { width: totalWidth } : undefined}
@@ -448,13 +530,46 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
                 {widths.map((_, column) => (
                   <th
                     key={column}
+                    // Announced rather than left to the arrow glyph, which is
+                    // decoration and hidden from assistive technology.
+                    aria-sort={
+                      sort?.column === column
+                        ? sort.direction === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                    }
                     // `sticky` already establishes the containing block the
                     // handle positions against, so no `relative` here.
                     className="sticky top-0 z-10 border-b border-r border-line bg-canvas px-3 py-1.5 text-xs font-normal text-muted"
                   >
-                    <span className="block truncate">
-                      {columnLabel(column)}
-                    </span>
+                    {/*
+                      A button rather than a click handler on the header: this
+                      is a control, and it has to be reachable and operable the
+                      same way every other control here is. It sits alongside
+                      the resize handle, which keeps its own tab stop.
+                    */}
+                    <button
+                      type="button"
+                      data-testid={`sort-${column}`}
+                      aria-label={`Sort by column ${columnLabel(column)}`}
+                      onClick={() =>
+                        setSort((current) => {
+                          const direction = nextDirection(
+                            current?.column === column ? current.direction : null,
+                          );
+                          return direction === null ? null : { column, direction };
+                        })
+                      }
+                      className="flex w-full items-center gap-1 truncate rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                    >
+                      <span className="truncate">{columnLabel(column)}</span>
+                      {sort?.column === column && (
+                        <span aria-hidden="true" className="text-accent">
+                          {sort.direction === "asc" ? "▲" : "▼"}
+                        </span>
+                      )}
+                    </button>
                     {/*
                       Drag to resize, double-click to fit the widest value —
                       the two gestures Excel puts on this same edge.
@@ -496,16 +611,23 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
                 <tr aria-hidden="true" style={{ height: start * ROW_HEIGHT }} />
               )}
 
-              {visibleRows.map((row, offset) => {
-                const rowIndex = start + offset;
+              {visiblePositions.map((rowIndex, offset) => {
+                const row = sheet.rows[rowIndex]!;
+                const position = start + offset;
                 const here = matches[current];
                 return (
                   <tr
                     key={rowIndex}
                     // The row's place in the sheet, not in the DOM.
-                    aria-rowindex={rowIndex + 2}
+                    aria-rowindex={position + 2}
                     style={{ height: ROW_HEIGHT }}
                   >
+                    {/*
+                      The row's number in the file, even when sorting has moved
+                      it up the page. A view that renumbers its rows 1..n looks
+                      tidier and makes a sorted sheet impossible to compare
+                      against the file it came from.
+                    */}
                     <td className="sticky left-0 z-10 border-b border-r border-line bg-canvas px-2 text-right text-xs tabular-nums text-muted">
                       {rowIndex + 1}
                     </td>
@@ -516,7 +638,9 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
                         Boolean(value) &&
                         value!.toLowerCase().includes(matchable);
                       const isCurrent =
-                        hit && here?.row === rowIndex && here.column === column;
+                        hit &&
+                        here?.position === position &&
+                        here.column === column;
 
                       return (
                         <td
@@ -544,10 +668,10 @@ export default function SheetViewer({ sheets }: { sheets: Sheet[] }) {
                 );
               })}
 
-              {end < sheet.rows.length && (
+              {end < order.length && (
                 <tr
                   aria-hidden="true"
-                  style={{ height: (sheet.rows.length - end) * ROW_HEIGHT }}
+                  style={{ height: (order.length - end) * ROW_HEIGHT }}
                 />
               )}
             </tbody>

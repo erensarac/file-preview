@@ -26,7 +26,8 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "server-only": "^0.0.1",
-    "shiki": "^4.3.1"
+    "shiki": "^4.3.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

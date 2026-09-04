@@ -58,7 +58,7 @@ const LIMITS: WorkerLimits = {
   maxHtmlBytes: MAX_PREVIEW_HTML_BYTES,
 };
 
-const SERVER_FORMATS = new Set<FormatId>(["xlsx", "docx"]);
+const SERVER_FORMATS = new Set<FormatId>(["xlsx", "xls", "docx"]);
 
 export function hasServerParser(id: FormatId): boolean {
   return SERVER_FORMATS.has(id);

@@ -201,6 +201,12 @@ export function runParseInWorker(
 
       if (reply.ok) {
         finish(() => resolve({ result: reply.result, notices: reply.notices }));
+      } else if (reply.name === "ParserUnavailable") {
+        // The child could not load its parser. That is our deployment, not
+        // their file, and it must not arrive as a `ParserError`.
+        finish(() =>
+          reject(new ParseUnavailableError(`Parser unavailable: ${reply.message}`)),
+        );
       } else {
         finish(() => reject(new ParserError(reply.message, reply.name)));
       }

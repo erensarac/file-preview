@@ -48,13 +48,16 @@ jobs:
           npm install --package-lock-only \
             "xlsx@https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz" 2>&1 | tail -5
 
-          echo "— what a lockfile would pin —"
+          # The entry verbatim, not a summary of it. A URL dependency's lockfile
+          # entry cannot be written by hand without guessing at `bin` and
+          # `engines`, and a guess that is wrong fails `npm ci` on a machine
+          # that had nothing to do with the guess.
+          echo "— the lockfile entry, to be copied exactly —"
           node -e "
             const lock = require('/tmp/probe/package-lock.json');
-            const entry = lock.packages['node_modules/xlsx'];
-            console.log('resolved :', entry?.resolved);
-            console.log('integrity:', entry?.integrity ?? '(none recorded)');
-            console.log('version  :', entry?.version);
+            console.log(JSON.stringify(lock.packages['node_modules/xlsx'], null, 2));
+            console.log('--- root dependency spec ---');
+            console.log(JSON.stringify(lock.packages[''].dependencies, null, 2));
           "
 
       - name: Does it read a real .xls

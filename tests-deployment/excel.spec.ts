@@ -43,13 +43,38 @@ test("an Excel file opens on the deployment", async ({ page }) => {
    * message on screen. Racing the outcomes and logging the alert turns sixty
    * seconds of silence into the app's own account of what went wrong.
    */
+  /*
+   * Print the page, then assert.
+   *
+   * The previous version raced the value against the error region and logged
+   * the alert — and reported neither: the race resolved quickly, the alert
+   * count was zero, and the value never appeared. Three sentences of log that
+   * ruled nothing out. Anything that has to be deduced from an absence should
+   * have been printed instead, so this prints what is actually there.
+   */
   const parsed = page.getByText("96200");
-  const alert = page.locator('main [role="alert"]');
-  await expect(parsed.or(alert).first()).toBeVisible();
+  const outcome = await Promise.race([
+    parsed
+      .first()
+      .waitFor({ state: "visible", timeout: 60_000 })
+      .then(() => "parsed"),
+    page
+      .locator('[role="alert"]')
+      .first()
+      .waitFor({ state: "visible", timeout: 60_000 })
+      .then(() => "alert"),
+  ]).catch(() => "neither");
 
-  if (await alert.count()) {
-    console.log(`  the deployment refused it: ${await alert.innerText()}`);
+  console.log(`  outcome: ${outcome}`);
+  for (const text of await page.locator('[role="alert"]').allInnerTexts()) {
+    console.log(`  alert: ${text}`);
   }
+  console.log(
+    `  page: ${(await page.locator("main").innerText())
+      .slice(0, 900)
+      .replace(/\n+/g, " | ")}`,
+  );
+
   await expect(parsed).toBeVisible();
   const firstMs = Date.now() - first;
 

@@ -91,6 +91,15 @@ jobs:
           DEPLOYMENT_URL: ${{ inputs.base_url }}
         run: npx playwright test --config playwright.deployment.config.ts
 
+      # The page's own state at the moment it failed. Without this the log says
+      # an element was not found and nothing about what was there instead.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: deployment-failure
+          path: test-results/
+          retention-days: 7
+
   rate-limits:
     needs: office-upload
     runs-on: ubuntu-latest

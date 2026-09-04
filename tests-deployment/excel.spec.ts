@@ -33,9 +33,24 @@ test("an Excel file opens on the deployment", async ({ page }) => {
     'input[type="file"]',
     join(FIXTURE_DIR, "report.xlsx"),
   );
-  // The formula's computed value: proof the workbook was actually parsed
-  // rather than an error being rendered politely.
-  await expect(page.getByText("96200")).toBeVisible();
+
+  /*
+   * Whichever comes first, and then say which.
+   *
+   * A check that can only report "the value never appeared" leaves whoever
+   * reads it to guess between a missing traced file, a refused spawn, a
+   * timeout and a rate limit — and each of those produces a *different*
+   * message on screen. Racing the outcomes and logging the alert turns sixty
+   * seconds of silence into the app's own account of what went wrong.
+   */
+  const parsed = page.getByText("96200");
+  const alert = page.locator('main [role="alert"]');
+  await expect(parsed.or(alert).first()).toBeVisible();
+
+  if (await alert.count()) {
+    console.log(`  the deployment refused it: ${await alert.innerText()}`);
+  }
+  await expect(parsed).toBeVisible();
   const firstMs = Date.now() - first;
 
   const second = Date.now();

@@ -9,6 +9,7 @@ import {
   ParseMemoryError,
   ParserError,
   ParseTimeoutError,
+  ParseUnavailableError,
   runParseInWorker,
   type WorkerLimits,
 } from "@/lib/parse-runner";
@@ -162,6 +163,34 @@ test.describe("running a parse in its own process", () => {
       LIMITS,
     );
     expect(result.kind).toBe("sheet");
+  });
+
+  /**
+   * The failure a deployment can have while every local test passes.
+   *
+   * `next.config.ts` forces the child into the traced output because nothing
+   * imports it; if that directive ever stops working the file is simply not
+   * deployed. Production then answers every Office upload with a message about
+   * the *file* being unreadable — which is what it did, until a check that
+   * uploads a real workbook to the real deployment said otherwise.
+   */
+  test("a missing child is our failure, and says so", async () => {
+    const failure = await runParseInWorker(
+      "xlsx",
+      bytesOf("report.xlsx"),
+      LIMITS,
+      PARSE_TIMEOUT_MS,
+      PARSE_MEMORY_MB,
+      join(FIXTURE_DIR, "no-such-child.mjs"),
+    ).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ParseUnavailableError);
+    // Not a ParserError: that class means a parser read the file and refused
+    // it, which is the opposite claim and the opposite message.
+    expect(failure).not.toBeInstanceOf(ParserError);
+    // Node's own reason is carried through, so a log says which of the two
+    // shapes of "not there" happened.
+    expect((failure as Error).message).toMatch(/cannot find module/i);
   });
 
   test("the defaults sit between what files need and what the platform allows", () => {

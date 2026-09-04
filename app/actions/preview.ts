@@ -31,6 +31,7 @@ import {
   ParseMemoryError,
   ParserError,
   ParseTimeoutError,
+  ParseUnavailableError,
 } from "@/lib/parse-runner";
 import { assertSafeArchive, ZipBombError } from "@/lib/zip-guard";
 
@@ -165,6 +166,26 @@ export async function previewFile(formData: FormData): Promise<PreviewResult> {
       // rise in locked files is worth being able to see.
       record("guard");
       return { ok: false, error: encryptedMessage(spec.label) };
+    }
+
+    /*
+     * Ours, not theirs.
+     *
+     * The parser could not be started, or died without speaking — a missing
+     * traced file, a platform refusing to spawn, a crash before the first
+     * message. Every one of those is our failure, and the generic message
+     * blamed the file for it: a deployment check found production telling
+     * people a perfectly good workbook might be corrupt.
+     */
+    if (error instanceof ParseUnavailableError) {
+      record("parse");
+      return {
+        ok: false,
+        error:
+          `We couldn't start the converter for this ${spec.label} file. ` +
+          `That is a fault on our side rather than a problem with your file — ` +
+          `it is worth trying again shortly.`,
+      };
     }
 
     if (error instanceof ParseMemoryError) {

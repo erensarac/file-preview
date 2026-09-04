@@ -543,6 +543,11 @@ there — including lines that impersonate other entries.
   from having no network. `components/FileWorkbench.tsx` tells the two apart
   by asking for a status directly, so a refused upload says to wait a minute
   rather than blaming the connection.
+- A parser that could not be **started** is reported as our failure, not as a
+  problem with the file. They are opposite claims, and collapsing them is not
+  hypothetical: the deployment check found production telling people a
+  perfectly good workbook might be corrupt, because a child process that never
+  ran and a parser that read a file and refused it arrived at the same message.
 - Office parsing runs in a **process of its own** (`lib/parse-runner.ts`) with
   two budgets it cannot exceed: 8 s of wall clock and 256 MB of heap. A
   document that runs away is stopped rather than abandoned, and the user is

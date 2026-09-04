@@ -1,0 +1,78 @@
+# TEMPORARY. Delete with the pull request that carries it.
+#
+# One question, asked of the only machines that can answer it: can the build
+# hosts reach cdn.sheetjs.com?
+#
+# `.xls` support needs SheetJS, and the copy of it on npm is four years stale
+# with two high-severity advisories and no fix published there (#58). The
+# maintained build exists only on the vendor's own CDN, which this project's
+# development container cannot reach — so whether that is a viable dependency
+# is not knowable from a laptop or from an agent session. A runner can simply
+# try.
+#
+# It also prints the integrity hash npm computes for the tarball, which is what
+# a lockfile would pin, and which cannot be produced without fetching the file
+# once.
+name: Probe SheetJS CDN
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/probe-sheetjs.yml
+
+permissions:
+  contents: read
+
+jobs:
+  reachable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Can the runner reach the CDN at all
+        run: |
+          echo "— HTTP status and size —"
+          curl -sS -I --max-time 30 https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz \
+            | grep -iE '^(HTTP/|content-length|content-type|server)' || echo "unreachable"
+
+      - name: Can npm install from it
+        run: |
+          mkdir -p /tmp/probe && cd /tmp/probe
+          echo '{"name":"probe","version":"1.0.0","private":true}' > package.json
+          # --package-lock-only fetches and hashes the tarball without building
+          # anything, which is the whole of what needs answering.
+          npm install --package-lock-only \
+            "xlsx@https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz" 2>&1 | tail -5
+
+          echo "— what a lockfile would pin —"
+          node -e "
+            const lock = require('/tmp/probe/package-lock.json');
+            const entry = lock.packages['node_modules/xlsx'];
+            console.log('resolved :', entry?.resolved);
+            console.log('integrity:', entry?.integrity ?? '(none recorded)');
+            console.log('version  :', entry?.version);
+          "
+
+      - name: Does it read a real .xls
+        run: |
+          cd /tmp/probe
+          npm install --no-save "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz" 2>&1 | tail -2
+          node --input-type=module -e "
+            import * as XLSX from '/tmp/probe/node_modules/xlsx/xlsx.mjs';
+            const book = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(
+              book,
+              XLSX.utils.aoa_to_sheet([['Region','Units'],['Marmara',120]]),
+              'Q1',
+            );
+            const bytes = XLSX.write(book, { type: 'buffer', bookType: 'biff8' });
+            const signature = [...bytes.slice(0, 8)].map(b => b.toString(16).padStart(2,'0')).join(' ');
+            console.log('BIFF8 written, OLE signature:', signature);
+            const back = XLSX.read(bytes, { type: 'buffer' });
+            console.log('read back, sheets:', back.SheetNames.join(','));
+            console.log('rows:', JSON.stringify(XLSX.utils.sheet_to_json(back.Sheets.Q1, { header: 1 })));
+          "

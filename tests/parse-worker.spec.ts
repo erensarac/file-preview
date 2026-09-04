@@ -205,3 +205,34 @@ test.describe("running a parse in its own process", () => {
     expect(PARSE_MEMORY_MB).toBeLessThan(1_024);
   });
 });
+
+/**
+ * The classification the child makes before replying.
+ *
+ * Checked directly because the alternative is breaking a deployment to see it:
+ * a dependency missing from the bundle throws inside the same try that catches
+ * parse errors, and for a while that meant a missing library and a malformed
+ * workbook produced the same sentence for the user.
+ */
+test.describe("whose fault a child's failure is", () => {
+  test("a missing module is ours", async () => {
+    const { unavailable } = await import("@/lib/parse-child.mjs");
+
+    expect(unavailable({ code: "ERR_MODULE_NOT_FOUND" })).toBe(true);
+    expect(unavailable(new Error("Cannot find module 'exceljs'"))).toBe(true);
+    expect(unavailable(new Error("Cannot find package 'mammoth'"))).toBe(true);
+  });
+
+  test("a parser refusing a file is theirs", async () => {
+    const { unavailable } = await import("@/lib/parse-child.mjs");
+
+    // The real messages exceljs and mammoth produce for a broken file must not
+    // be swept into "our fault", or a genuinely corrupt upload would be met
+    // with an apology and an invitation to try again.
+    expect(unavailable(new Error("Can't find end of central directory"))).toBe(
+      false,
+    );
+    expect(unavailable(new Error("Corrupted zip: missing bytes"))).toBe(false);
+    expect(unavailable(undefined)).toBe(false);
+  });
+});

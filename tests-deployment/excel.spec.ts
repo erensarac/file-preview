@@ -26,6 +26,25 @@ import { FIXTURE_DIR } from "../tests/fixtures";
  * the parse fails rather than being slow.
  */
 test("an Excel file opens on the deployment", async ({ page }) => {
+  /*
+   * Every upload's response, recorded as it lands. The page can only show what
+   * the client made of a request; this is what the platform actually said.
+   */
+  const posts: string[] = [];
+  const started = Date.now();
+  page.on("response", (response) => {
+    if (response.request().method() !== "POST") return;
+    posts.push(
+      `${response.status()} after ${Date.now() - started} ms — ${response.url()}`,
+    );
+  });
+  page.on("requestfailed", (request) => {
+    if (request.method() !== "POST") return;
+    posts.push(
+      `FAILED after ${Date.now() - started} ms — ${request.failure()?.errorText}`,
+    );
+  });
+
   await page.goto("/");
 
   const first = Date.now();
@@ -53,25 +72,41 @@ test("an Excel file opens on the deployment", async ({ page }) => {
    * have been printed instead, so this prints what is actually there.
    */
   const parsed = page.getByText("96200");
+  /*
+   * Scoped to `main`, because `[role="alert"]` on its own matches Next's route
+   * announcer — always present, always empty, and it won the previous race
+   * instantly. Two diagnostics were spent before that was noticed; the first
+   * rule of reading a page is to know whose element you are looking at.
+   */
+  const failed = page.locator('main [role="alert"]');
+
   const outcome = await Promise.race([
     parsed
       .first()
-      .waitFor({ state: "visible", timeout: 60_000 })
+      .waitFor({ state: "visible", timeout: 90_000 })
       .then(() => "parsed"),
-    page
-      .locator('[role="alert"]')
+    failed
       .first()
-      .waitFor({ state: "visible", timeout: 60_000 })
-      .then(() => "alert"),
+      .waitFor({ state: "visible", timeout: 90_000 })
+      .then(() => "refused"),
   ]).catch(() => "neither");
 
   console.log(`  outcome: ${outcome}`);
-  for (const text of await page.locator('[role="alert"]').allInnerTexts()) {
-    console.log(`  alert: ${text}`);
+  for (const text of await failed.allInnerTexts()) {
+    console.log(`  message: ${text}`);
+  }
+  /*
+   * The decisive line. The app's own parse ceiling is 8 s, so a parse that
+   * hangs reports itself long before this test gives up — and it did not. That
+   * points past our code at the request itself, and only the response can say
+   * whether it came back 504, 500, or never came back at all.
+   */
+  for (const post of posts) {
+    console.log(`  POST ${post}`);
   }
   console.log(
     `  page: ${(await page.locator("main").innerText())
-      .slice(0, 900)
+      .slice(0, 400)
       .replace(/\n+/g, " | ")}`,
   );
 

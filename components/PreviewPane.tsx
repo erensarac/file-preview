@@ -3,6 +3,7 @@
 import { formatBytes } from "@/lib/formats";
 import type { PreviewDocument } from "@/lib/preview";
 
+import ArchiveViewer from "./viewers/ArchiveViewer";
 import HtmlViewer from "./viewers/HtmlViewer";
 import ImageViewer from "./viewers/ImageViewer";
 import PdfViewer from "./viewers/PdfViewer";
@@ -22,6 +23,13 @@ function Viewer({ preview }: { preview: PreviewDocument["preview"] }) {
     case "image":
       return (
         <ImageViewer bytes={preview.bytes} mimeType={preview.mimeType} />
+      );
+    case "archive":
+      return (
+        <ArchiveViewer
+          entries={preview.entries}
+          totalUncompressed={preview.totalUncompressed}
+        />
       );
   }
 }

@@ -82,6 +82,13 @@ for (const colorScheme of ["light", "dark"] as const) {
     expect(await violations(page)).toEqual([]);
   });
 
+  test("with an archive open", async ({ page }) => {
+    await page.goto("/");
+    await page.setInputFiles('input[type="file"]', fixture("bundle.zip"));
+    await expect(page.getByTestId("archive-summary")).toBeVisible();
+    expect(await violations(page)).toEqual([]);
+  });
+
   test("on a format landing page", async ({ page }) => {
     await page.goto("/excel-viewer");
     await expect(

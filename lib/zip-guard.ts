@@ -46,6 +46,35 @@ export interface ZipReport {
   ratio: number;
 }
 
+/** One line of the archive's own index. */
+export interface ZipEntry {
+  /**
+   * As stored, and therefore **untrusted**. A zip may name an entry
+   * `../../etc/passwd`, or anything else at all; nothing here writes files, so
+   * a name is only ever text to display — and it is displayed as text, never
+   * resolved.
+   */
+  name: string;
+  compressedBytes: number;
+  uncompressedBytes: number;
+  /** Bit 0 of the general-purpose flags: the entry's data is encrypted. */
+  encrypted: boolean;
+  /** Directories are stored as zero-length entries whose name ends in "/". */
+  directory: boolean;
+}
+
+/**
+ * Names are collected only while the archive is still plausible.
+ *
+ * A zip may declare 65,534 entries and each name may be 64 KiB, so collecting
+ * every name before the entry count has been judged is four gigabytes of
+ * strings from a file that fits in a mail attachment. The walk that only sums
+ * sizes has never had that exposure — it steps over names without reading
+ * them — and this keeps it that way by refusing to collect past the limit the
+ * guard would reject at anyway.
+ */
+const MAX_NAME_BYTES = 4_096;
+
 export class NotAZipError extends Error {}
 export class ZipBombError extends Error {}
 
@@ -77,8 +106,27 @@ export function inspectZip(bytes: Uint8Array): ZipReport {
     throw new ZipBombError("Zip64 archives are not supported");
   }
 
+  return walkCentralDirectory(view, at, entries, false).report;
+}
+
+/**
+ * One walk, two callers.
+ *
+ * The guard needs the sums and nothing else; the listing needs the names too.
+ * Keeping them one function means the listing cannot drift into reading the
+ * directory differently from the code that decides whether to trust it.
+ */
+function walkCentralDirectory(
+  view: DataView,
+  from: number,
+  entries: number,
+  collectNames: boolean,
+): { report: ZipReport; files: ZipEntry[] } {
+  let at = from;
   let compressedBytes = 0;
   let uncompressedBytes = 0;
+  const files: ZipEntry[] = [];
+  const decoder = collectNames ? new TextDecoder("utf-8") : null;
 
   for (let index = 0; index < entries; index += 1) {
     if (at + CENTRAL_FILE_HEADER_SIZE > view.byteLength) {
@@ -88,6 +136,7 @@ export function inspectZip(bytes: Uint8Array): ZipReport {
       throw new NotAZipError("Malformed central directory entry");
     }
 
+    const flags = view.getUint16(at + 8, true);
     const compressed = view.getUint32(at + 20, true);
     const uncompressed = view.getUint32(at + 24, true);
     if (compressed === ZIP64_SENTINEL || uncompressed === ZIP64_SENTINEL) {
@@ -97,19 +146,85 @@ export function inspectZip(bytes: Uint8Array): ZipReport {
     compressedBytes += compressed;
     uncompressedBytes += uncompressed;
 
+    const nameLength = view.getUint16(at + 28, true);
+
+    if (decoder && files.length < MAX_ENTRIES) {
+      const start = view.byteOffset + at + CENTRAL_FILE_HEADER_SIZE;
+      const name = decoder.decode(
+        new Uint8Array(
+          view.buffer,
+          start,
+          Math.min(nameLength, MAX_NAME_BYTES, view.byteLength - at - CENTRAL_FILE_HEADER_SIZE),
+        ),
+      );
+      files.push({
+        name,
+        compressedBytes: compressed,
+        uncompressedBytes: uncompressed,
+        encrypted: (flags & 1) === 1,
+        directory: name.endsWith("/"),
+      });
+    }
+
     at +=
       CENTRAL_FILE_HEADER_SIZE +
-      view.getUint16(at + 28, true) + // file name
+      nameLength +
       view.getUint16(at + 30, true) + // extra field
       view.getUint16(at + 32, true); // comment
   }
 
   return {
-    entries,
-    compressedBytes,
-    uncompressedBytes,
-    ratio: compressedBytes === 0 ? Infinity : uncompressedBytes / compressedBytes,
+    report: {
+      entries,
+      compressedBytes,
+      uncompressedBytes,
+      ratio:
+        compressedBytes === 0 ? Infinity : uncompressedBytes / compressedBytes,
+    },
+    files,
   };
+}
+
+/**
+ * The archive's index, read and not acted on.
+ *
+ * Takes the central directory on its own rather than the whole file, because
+ * the caller can slice it: a zip records where its index lives, so listing a
+ * 2 GB archive reads a few kilobytes from the end of it and never touches the
+ * compressed data at all. Nothing here inflates anything.
+ */
+export function listCentralDirectory(
+  centralDirectory: Uint8Array,
+  entries: number,
+): { report: ZipReport; files: ZipEntry[] } {
+  const view = new DataView(
+    centralDirectory.buffer,
+    centralDirectory.byteOffset,
+    centralDirectory.byteLength,
+  );
+  return walkCentralDirectory(view, 0, entries, true);
+}
+
+/** Where the index lives, from the record at the end of the archive. */
+export function locateCentralDirectory(tail: Uint8Array, fileSize: number) {
+  const view = new DataView(tail.buffer, tail.byteOffset, tail.byteLength);
+  if (view.byteLength < EOCD_MIN_SIZE) {
+    throw new NotAZipError("Too small to be a zip archive");
+  }
+
+  const eocd = findEndOfCentralDirectory(view);
+  const entries = view.getUint16(eocd + 10, true);
+  const size = view.getUint32(eocd + 12, true);
+  const offset = view.getUint32(eocd + 16, true);
+
+  if (entries === 0xffff || offset === ZIP64_SENTINEL || size === ZIP64_SENTINEL) {
+    throw new ZipBombError("Zip64 archives are not supported");
+  }
+  if (offset + size > fileSize) {
+    throw new NotAZipError("Central directory runs past the end of the file");
+  }
+
+  return { entries, offset, size };
 }
 
 /**

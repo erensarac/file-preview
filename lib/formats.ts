@@ -19,6 +19,7 @@ export type FormatId =
   | "text"
   | "pdf"
   | "image"
+  | "zip"
   | "xlsx"
   | "docx";
 
@@ -234,6 +235,26 @@ export const FORMATS: readonly FormatSpec[] = [
     // deployment's body ceiling does not apply.
     runtime: "client",
     maxBytes: 30 * MB,
+  },
+  {
+    id: "zip",
+    label: "Archive",
+    /*
+     * The cap is generous because nothing here reads the archive.
+     *
+     * A zip keeps its index at the end of the file, so listing one means
+     * reading a few kilobytes from the tail and the directory it points at —
+     * the compressed data is never touched, and a 500 MB archive costs the
+     * same as a 50 KB one. The ceiling exists only so that a number exists.
+     *
+     * Office formats are zips too, and they keep their own entries in the
+     * registry above: detection is by extension, so an .xlsx opens as a
+     * spreadsheet and only a file actually named .zip lists its contents.
+     */
+    extensions: ["zip"],
+    mimeTypes: ["application/zip", "application/x-zip-compressed"],
+    runtime: "client",
+    maxBytes: 512 * MB,
   },
   {
     id: "xlsx",

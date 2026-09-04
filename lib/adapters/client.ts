@@ -153,6 +153,64 @@ const parseImage: ClientParser = async (file) => {
   };
 };
 
+/**
+ * Lists an archive without reading it.
+ *
+ * A zip keeps its index at the end of the file, so this reads the last 64 KiB
+ * to find that record, then the directory it points at, and stops. The
+ * compressed data is never fetched — which is why the size cap on this format
+ * can be generous, and why a 500 MB archive costs the same as a small one.
+ *
+ * Nothing is decompressed and nothing is written, so the names it hands over
+ * are text and only text. That matters: `../../etc/passwd` is a legal entry
+ * name, and the reason it is harmless here is that no code path in this
+ * feature treats a name as a path.
+ */
+const parseZip: ClientParser = async (file, notices) => {
+  const { listCentralDirectory, locateCentralDirectory, NotAZipError } =
+    await import("../zip-guard");
+
+  // 22 bytes of record plus up to 64 KiB of archive comment after it.
+  const TAIL_BYTES = 65_557;
+  const tail = new Uint8Array(
+    await file.slice(Math.max(0, file.size - TAIL_BYTES)).arrayBuffer(),
+  );
+
+  let located;
+  try {
+    located = locateCentralDirectory(tail, file.size);
+  } catch (cause) {
+    if (cause instanceof NotAZipError) {
+      throw new Error(
+        "This doesn't look like a zip archive, or it is damaged past the point where its index should be.",
+      );
+    }
+    throw cause;
+  }
+
+  const directory = new Uint8Array(
+    await file.slice(located.offset, located.offset + located.size).arrayBuffer(),
+  );
+  const { report, files } = listCentralDirectory(directory, located.entries);
+
+  if (files.length < report.entries) {
+    notices.push(
+      `This archive declares ${report.entries.toLocaleString()} entries; listing the first ${files.length.toLocaleString()}.`,
+    );
+  }
+  if (files.some((entry) => entry.encrypted)) {
+    notices.push(
+      "Some entries are encrypted. Their names and sizes are listed; their contents would need the password.",
+    );
+  }
+
+  return {
+    kind: "archive",
+    entries: files,
+    totalUncompressed: report.uncompressedBytes,
+  };
+};
+
 const parseText: ClientParser = async (file) => ({
   kind: "text",
   text: await file.text(),
@@ -167,6 +225,7 @@ const PARSERS: Partial<Record<FormatId, ClientParser>> = {
   text: parseText,
   pdf: parsePdf,
   image: parseImage,
+  zip: parseZip,
 };
 
 // A format whose runtime and parser disagree fails confusingly at the far end —

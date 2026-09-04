@@ -414,6 +414,22 @@ export async function buildFixtures(): Promise<void> {
   }
   await wide.xlsx.writeFile(at("wide.xlsx"));
 
+  /*
+   * A plain archive, including the two things a listing has to survive: an
+   * entry named like a path traversal, and a folder entry. Neither is exotic —
+   * both come out of ordinary zip tools — and the first is only harmless
+   * because nothing resolves it.
+   */
+  const archive = new JSZip();
+  archive.file("readme.txt", "just a file\n");
+  archive.folder("docs")!.file("guide.md", "# Guide\n\nsome text\n");
+  archive.file("../../etc/passwd", "not actually going anywhere\n");
+  archive.file("data/big.csv", "col\n" + "1\n".repeat(4000));
+  writeFileSync(
+    at("bundle.zip"),
+    await archive.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }),
+  );
+
   // A decompression bomb wearing an .xlsx extension: 64 MB of zeros stores in
   // a few tens of KB, so it declares an expansion ratio in the thousands. The
   // guard has to refuse it on the declared sizes alone, without inflating it.

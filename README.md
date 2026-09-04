@@ -18,10 +18,10 @@ declares a `runtime` in `lib/formats.ts`:
 
 | Runtime  | Formats                                     | What happens                                                             |
 | -------- | ------------------------------------------- | ------------------------------------------------------------------------ |
-| `client` | CSV, TSV, Markdown, JSON, text, PDF, images | Read with the File API in the tab. **Never sent anywhere.**              |
+| `client` | CSV, TSV, Markdown, JSON, text, PDF, images, archives | Read with the File API in the tab. **Never sent anywhere.**    |
 | `server` | Excel (xlsx/xlsm), Word (docx)              | Posted to a server action, parsed in memory, discarded with the request. |
 
-Seven of the nine formats never leave the device; the two that do are the two
+Eight of the ten formats never leave the device; the two that do are the two
 whose parsers are too heavy to ship to a browser.
 
 Text formats stay local because they can — that privacy guarantee is the
@@ -133,6 +133,38 @@ image someone has just opened, and a description invented here would be read as
 fact by a screen reader. The region announces that this is an image and the
 pane header names the file, which is everything actually known about it.
 
+## Archives
+
+A `.zip` opens as a list of what is inside it: every entry's name, its unpacked
+size and its packed size, filterable by name.
+
+**Nothing is decompressed.** A zip keeps an index of itself at the end of the
+file, so listing one means reading the last 64 KiB to find that record and then
+the directory it points at — a few kilobytes, whatever the archive weighs. That
+is why the size cap here is 512 MB where a PDF's is 30: the compressed data is
+never fetched, so a large archive costs no more than a small one.
+
+The reader is the same walk `lib/zip-guard.ts` already used to refuse
+decompression bombs, extended to collect names. Deliberately one function: a
+listing that read the directory differently from the code deciding whether to
+trust it would be two opinions about one file.
+
+Two things this format invites, and what is done about them:
+
+- **An entry name is untrusted text.** `../../etc/passwd` is a legal name in a
+  zip. It is harmless here because nothing treats a name as a path — it is
+  rendered into a table cell and never resolved, and a fixture carrying that
+  name pins it.
+- **Names are collected only up to the entry limit.** A zip may declare 65,534
+  entries with 64 KiB names, which is gigabytes of strings from a small file.
+  The sizes-only walk never had that exposure because it steps over names
+  without reading them; the listing keeps that property by refusing to collect
+  past the count the guard would reject anyway.
+
+Office formats are zips too, and they keep opening as themselves: detection is
+by extension, so only a file actually named `.zip` is listed. Opening a file
+*inside* an archive is a different feature and is not offered.
+
 ## Syntax highlighting
 
 Source files are coloured with Shiki, in the browser — a file is not uploaded
@@ -195,7 +227,7 @@ new `Preview` variant and viewer, as PDF and images did.
 
 People do not search for "file preview" — they search for "open xlsx online" or
 "view a docx without Word". `lib/landing.ts` carries a page for seven of the
-nine formats — the ones people name when they search — and
+ten formats — the ones people name when they search — and
 `app/[viewer]/page.tsx` prerenders them with their own titles, descriptions and
 canonical URLs.
 

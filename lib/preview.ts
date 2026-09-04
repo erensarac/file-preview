@@ -40,7 +40,24 @@ export type Preview =
    * puts creating and revoking it in one place, which is what stops a leak
    * per opened file.
    */
-  | { kind: "image"; bytes: Uint8Array; mimeType: string };
+  | { kind: "image"; bytes: Uint8Array; mimeType: string }
+  /**
+   * An archive, carried as what it says about itself rather than as its
+   * contents. Nothing here is decompressed: a zip records the name and both
+   * sizes of every entry in an index at the end of the file, and reading that
+   * index is the whole operation. Opening an entry would be a different
+   * feature with different risks.
+   */
+  | { kind: "archive"; entries: ArchiveEntry[]; totalUncompressed: number };
+
+export interface ArchiveEntry {
+  /** As stored in the archive, and treated as text rather than as a path. */
+  name: string;
+  compressedBytes: number;
+  uncompressedBytes: number;
+  encrypted: boolean;
+  directory: boolean;
+}
 
 export interface PreviewMeta {
   name: string;

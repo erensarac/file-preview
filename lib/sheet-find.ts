@@ -11,8 +11,17 @@
  */
 
 export interface Match {
+  /** Index into the sheet's own rows — what the row number shows. */
   row: number;
   column: number;
+  /**
+   * Where the match sits in the *view*, which is what scrolling needs.
+   *
+   * Once rows can be sorted or filtered, the row's place in the file and its
+   * place on screen are different numbers, and using the first to scroll would
+   * send the reader to whatever happens to occupy that line now.
+   */
+  position: number;
 }
 
 /**
@@ -23,17 +32,30 @@ export interface Match {
  * wants the rows, and would not thank us for a regex dialect they have to
  * learn — nor for the ways a regex can be made to take a very long time.
  */
-export function findMatches(rows: string[][], query: string): Match[] {
+export function findMatches(
+  rows: string[][],
+  query: string,
+  /**
+   * The rows to search, in the order they appear on screen. Defaults to the
+   * file's own order; passing the view's order is what keeps "next match" and
+   * "the next one down the page" the same thing after a sort.
+   */
+  order?: number[],
+): Match[] {
   const needle = query.trim().toLowerCase();
   if (needle === "") return [];
 
   const matches: Match[] = [];
-  for (let row = 0; row < rows.length; row += 1) {
-    const cells = rows[row]!;
+  const length = order ? order.length : rows.length;
+
+  for (let position = 0; position < length; position += 1) {
+    const row = order ? order[position]! : position;
+    const cells = rows[row];
+    if (!cells) continue;
     for (let column = 0; column < cells.length; column += 1) {
       const value = cells[column];
       if (value && value.toLowerCase().includes(needle)) {
-        matches.push({ row, column });
+        matches.push({ row, column, position });
       }
     }
   }
@@ -48,6 +70,7 @@ export function findMatches(rows: string[][], query: string): Match[] {
  * looked for, and there is nothing above it to say what it sits between.
  */
 export function scrollTopFor(
+  /** A position in the view, not a row of the file. */
   row: number,
   rowHeight: number,
   viewportHeight: number,

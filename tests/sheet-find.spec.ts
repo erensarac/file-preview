@@ -24,8 +24,8 @@ test.describe("finding cells", () => {
 
   test("matches anywhere in a cell, ignoring case", () => {
     expect(findMatches(rows, "istanbul")).toEqual([
-      { row: 2, column: 1 },
-      { row: 3, column: 1 },
+      { row: 2, column: 1, position: 2 },
+      { row: 3, column: 1, position: 3 },
     ]);
   });
 
@@ -34,6 +34,17 @@ test.describe("finding cells", () => {
     // focused is noise, and clearing the box has to clear the highlighting.
     expect(findMatches(rows, "")).toEqual([]);
     expect(findMatches(rows, "   ")).toEqual([]);
+  });
+
+  test("searches the view's order, and reports both places", () => {
+    // The rows as they appear after a sort: the file's row 3 is on screen
+    // first. A match has to carry both, because one number scrolls the page
+    // and the other is what the row number shows.
+    const order = [3, 2, 1, 0];
+    expect(findMatches(rows, "istanbul", order)).toEqual([
+      { row: 3, column: 1, position: 0 },
+      { row: 2, column: 1, position: 1 },
+    ]);
   });
 
   test("moving past either end wraps rather than stopping", () => {
@@ -151,7 +162,9 @@ test("a server-parsed sheet still truncates, and still says so", async ({
 }) => {
   await page.goto("/");
   await page.setInputFiles('input[type="file"]', fixture("wide.xlsx"));
-  await expect(page.locator("table")).toBeVisible();
+  // Same allowance the other specs make for this fixture: 3 MB through a
+  // server parse is past the default timeout once workers run in parallel.
+  await expect(page.locator("table")).toBeVisible({ timeout: 30_000 });
 
   // Specific to the *row* notice: this sheet is past the column budget and the
   // cell budget too, so a loose match finds three notices and asserts nothing

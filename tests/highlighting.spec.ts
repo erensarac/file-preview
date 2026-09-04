@@ -194,19 +194,43 @@ test.describe("Markdown code blocks", () => {
   });
 
   test("a block does not move when its colour arrives", async ({ page }) => {
-    const boxOf = (page: import("@playwright/test").Page) =>
-      page
-        .locator(".rendered-doc pre")
-        .first()
-        .evaluate((element) => {
-          const box = element.getBoundingClientRect();
-          return {
-            x: Math.round(box.x),
-            y: Math.round(box.y),
-            width: Math.round(box.width),
-            height: Math.round(box.height),
-          };
-        });
+    /**
+     * Measures, and refuses to return a measurement of nothing.
+     *
+     * `getBoundingClientRect` on a **detached** node answers all zeros, and a
+     * node can be detached between the visibility check and the evaluate call
+     * by a re-render that has nothing to do with this test. That happened on
+     * CI: the baseline came back `{0, 0, 0, 0}`, became the expected value,
+     * and the real geometry was reported as the mismatch — a test failing
+     * while pointing at the wrong half of itself.
+     *
+     * Polling both fixes the race and turns "we failed to measure" into its
+     * own failure rather than a silent zero.
+     */
+    const boxOf = async (page: import("@playwright/test").Page) => {
+      let box = { x: 0, y: 0, width: 0, height: 0 };
+      await expect
+        .poll(
+          async () => {
+            box = await page
+              .locator(".rendered-doc pre")
+              .first()
+              .evaluate((element) => {
+                const rect = element.getBoundingClientRect();
+                return {
+                  x: Math.round(rect.x),
+                  y: Math.round(rect.y),
+                  width: Math.round(rect.width),
+                  height: Math.round(rect.height),
+                };
+              });
+            return box.width * box.height;
+          },
+          { message: "the code block never reported a size" },
+        )
+        .toBeGreaterThan(0);
+      return box;
+    };
 
     await page.goto("/");
 

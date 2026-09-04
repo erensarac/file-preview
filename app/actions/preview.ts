@@ -27,7 +27,11 @@ import {
   sizeBucket,
   type FailurePhase,
 } from "@/lib/telemetry";
-import { ParseMemoryError, ParseTimeoutError } from "@/lib/parse-runner";
+import {
+  ParseMemoryError,
+  ParserError,
+  ParseTimeoutError,
+} from "@/lib/parse-runner";
 import { assertSafeArchive, ZipBombError } from "@/lib/zip-guard";
 
 /**
@@ -35,6 +39,13 @@ import { assertSafeArchive, ZipBombError } from "@/lib/zip-guard";
  * workbooks landing on one instance at once is how it runs out of memory.
  */
 const runParse = createBulkhead(4);
+
+/** "PK\x03\x04" — the local file header every zip starts with. */
+function isZip(bytes: Uint8Array): boolean {
+  return (
+    bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04
+  );
+}
 
 export async function previewFile(formData: FormData): Promise<PreviewResult> {
   const file = formData.get("file");
@@ -82,7 +93,25 @@ export async function previewFile(formData: FormData): Promise<PreviewResult> {
         throw new EncryptedFileError();
       }
 
-      assertSafeArchive(bytes);
+      /*
+       * Keyed on what the file is, not on what it is called.
+       *
+       * The guard reads a zip's own bookkeeping to refuse an implausible
+       * expansion before a parser allocates anything, so it has something to
+       * say about `.xlsx` and `.docx` and nothing to say about anything else.
+       * A pre-2007 `.xls` is an OLE compound document; the zip reader finds no
+       * central directory and rejects a perfectly good workbook as malformed.
+       * That happened the first time this ran end to end — the parser tests
+       * passed and the browser said the file could not be read.
+       *
+       * Scoping it by format id would have left the same hole one step along:
+       * an old workbook renamed `.xlsx` arrives as `xlsx`, and the parser now
+       * handles that by sniffing the signature. So the guard sniffs it too.
+       * Skipping a non-zip weakens nothing, because a non-zip is not what the
+       * guard protects against — and the child process's time and memory
+       * ceilings apply either way.
+       */
+      if (isZip(bytes)) assertSafeArchive(bytes);
 
       return parseOnServer(
         { name: file.name, size: file.size, bytes },
@@ -115,6 +144,21 @@ export async function previewFile(formData: FormData): Promise<PreviewResult> {
           sizeBucket: sizeBucket(file.size),
         }),
       );
+
+    /*
+     * A password-protected `.xls` is only discovered by the parser.
+     *
+     * `looksEncryptedOffice` above recognises the OOXML mechanism — an OLE
+     * container holding an `EncryptedPackage` stream. BIFF locks a workbook
+     * with a FILEPASS record instead, which that check cannot see, so the file
+     * reaches the child and the child is what notices. It reports the name;
+     * this turns it back into the same explanation the modern format gets,
+     * rather than letting a locked file read as a broken one.
+     */
+    if (error instanceof ParserError && error.parserName === "EncryptedFileError") {
+      record("guard");
+      return { ok: false, error: encryptedMessage(spec.label) };
+    }
 
     if (error instanceof EncryptedFileError) {
       // Recorded, not because it is our failure — it is not — but because a

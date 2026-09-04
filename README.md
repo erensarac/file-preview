@@ -19,10 +19,10 @@ declares a `runtime` in `lib/formats.ts`:
 | Runtime  | Formats                                     | What happens                                                             |
 | -------- | ------------------------------------------- | ------------------------------------------------------------------------ |
 | `client` | CSV, TSV, Markdown, JSON, text, PDF, images, archives | Read with the File API in the tab. **Never sent anywhere.**    |
-| `server` | Excel (xlsx/xlsm), Word (docx)              | Posted to a server action, parsed in memory, discarded with the request. |
+| `server` | Excel (xlsx/xlsm), Excel 97 (xls), Word (docx) | Posted to a server action, parsed in memory, discarded with the request. |
 
-Eight of the ten formats never leave the device; the two that do are the two
-whose parsers are too heavy to ship to a browser.
+Eight of the eleven formats never leave the device; the three that do are the
+ones whose parsers are too heavy to ship to a browser.
 
 Text formats stay local because they can — that privacy guarantee is the
 product's main differentiator, so it is given up only where a parser is genuinely
@@ -133,6 +133,39 @@ image someone has just opened, and a description invented here would be read as
 fact by a screen reader. The region announces that this is an image and the
 pane header names the file, which is everything actually known about it.
 
+## Excel 97
+
+`.xls` is not an old version of `.xlsx`; it is a different file that happens to
+open in the same application — an OLE compound document of BIFF records rather
+than a zip of XML. `exceljs` does not read it, so it has its own parser, in the
+same child process under the same 8 s and 256 MB ceilings.
+
+**The dependency is fetched from the vendor rather than from npm, deliberately.**
+The `xlsx` package on npm has not moved since March 2022 and carries two
+high-severity advisories whose fixes were never published there — the
+maintained builds live only on SheetJS's own CDN. So `package.json` names the
+tarball URL, and the lockfile pins its integrity hash. The cost is real and
+worth stating: every build now needs `cdn.sheetjs.com` reachable, and if it is
+not, the build fails rather than degrading. That both build hosts *can* reach
+it was measured before the dependency was added, not assumed.
+
+Routing is by signature rather than by name. These files are old enough that
+many have been renamed along the way, and a pre-2007 workbook called `.xlsx`
+used to fail with a parser complaining that a perfectly good file was not a
+valid archive. Anything arriving as an OLE compound document goes to the older
+parser whatever its extension says; a real `.xlsx` named `.xls` needs nothing,
+because SheetJS reads both.
+
+The archive guard is keyed on the same signature. It reads a zip's own
+bookkeeping, so it has nothing to say about a file that is not a zip, and
+running it on one rejected a valid workbook as malformed.
+
+A password-protected `.xls` is only discovered by the parser. `lib/encrypted.ts`
+recognises the OOXML mechanism — an OLE container holding an `EncryptedPackage`
+stream — but BIFF locks a workbook with a FILEPASS record, which that check
+cannot see. The parser's report is translated back into the same explanation
+the modern format gets, so a locked file does not read as a broken one.
+
 ## Archives
 
 A `.zip` opens as a list of what is inside it: every entry's name, its unpacked
@@ -227,7 +260,7 @@ new `Preview` variant and viewer, as PDF and images did.
 
 People do not search for "file preview" — they search for "open xlsx online" or
 "view a docx without Word". `lib/landing.ts` carries a page for seven of the
-ten formats — the ones people name when they search — and
+eleven formats — the ones people name when they search — and
 `app/[viewer]/page.tsx` prerenders them with their own titles, descriptions and
 canonical URLs.
 

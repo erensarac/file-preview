@@ -21,6 +21,7 @@ export type FormatId =
   | "image"
   | "zip"
   | "xlsx"
+  | "xls"
   | "docx";
 
 /**
@@ -264,6 +265,23 @@ export const FORMATS: readonly FormatSpec[] = [
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "application/vnd.ms-excel.sheet.macroEnabled.12",
     ],
+    runtime: "server",
+    maxBytes: 4 * MB,
+  },
+  {
+    id: "xls",
+    label: "Excel 97",
+    /*
+     * The pre-2007 format, and a different file entirely: not a zip of XML but
+     * an OLE compound document holding BIFF records. `exceljs` does not read
+     * it, so it has its own parser — see the README for why that dependency is
+     * fetched from the vendor rather than from npm.
+     *
+     * Same cap and same runtime as the modern format, because it goes through
+     * the same child process under the same time and memory ceilings.
+     */
+    extensions: ["xls"],
+    mimeTypes: ["application/vnd.ms-excel"],
     runtime: "server",
     maxBytes: 4 * MB,
   },

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 
 import ExcelJS from "exceljs";
+import * as XLSX from "xlsx";
 import JSZip from "jszip";
 
 /**
@@ -428,6 +429,43 @@ export async function buildFixtures(): Promise<void> {
   writeFileSync(
     at("bundle.zip"),
     await archive.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }),
+  );
+
+  /*
+   * The pre-2007 format, written by the same library that reads it.
+   *
+   * Nothing else here can produce one — `exceljs` writes only the modern
+   * format — and a committed binary would be exactly the opaque fixture
+   * CONTRIBUTING argues against. Round-tripping through one library does not
+   * prove compatibility with files Excel itself wrote, and that is worth
+   * knowing: what it pins is our own handling, not the format's full surface.
+   */
+  const legacyBook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    legacyBook,
+    XLSX.utils.aoa_to_sheet([
+      ["Region", "Units", "Revenue"],
+      ["Marmara", 120, 45000],
+      ["Ege", 98, 31200],
+      ["Karadeniz", 67, 19800],
+    ]),
+    "Q1",
+  );
+  XLSX.utils.book_append_sheet(
+    legacyBook,
+    XLSX.utils.aoa_to_sheet([["Second sheet works"]]),
+    "Notes",
+  );
+  writeFileSync(
+    at("ledger.xls"),
+    XLSX.write(legacyBook, { type: "buffer", bookType: "biff8" }),
+  );
+
+  // The same bytes wearing the modern extension: a file people really do have,
+  // and which used to fail with a parser error about a perfectly good file.
+  writeFileSync(
+    at("misnamed.xlsx"),
+    XLSX.write(legacyBook, { type: "buffer", bookType: "biff8" }),
   );
 
   // A decompression bomb wearing an .xlsx extension: 64 MB of zeros stores in

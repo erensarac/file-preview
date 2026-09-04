@@ -177,6 +177,33 @@ rejected. There is no such form here today; adding one means teaching that
 check about it first, and the spec named `a real upload is unaffected` is what
 will tell you it needs teaching.
 
+## The SheetJS dependency is not from npm
+
+`package.json` names a tarball URL:
+
+```
+"xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+```
+
+That is deliberate, not an accident of someone's local install. The `xlsx`
+package on npm has been frozen since March 2022 and carries two high-severity
+advisories whose fixes were never published there; the maintained builds exist
+only on the vendor's CDN. The lockfile pins the tarball's integrity hash, so
+installs verify what they fetch.
+
+Two consequences for you:
+
+- **Builds need `cdn.sheetjs.com` reachable.** If it is blocked or down, `npm
+  ci` fails rather than degrading. A sandbox without egress to it cannot
+  install this project.
+- **Do not "fix" it by pointing at the registry.** `xlsx@0.18.5` installs
+  cleanly and is four years of unfixed parser bugs behind, on code that reads
+  untrusted files on the server.
+
+If the dependency ever needs to change, the version must be bumped in both
+`package.json` and the lockfile entry, integrity hash included — and that hash
+can only be produced by fetching the tarball once.
+
 ## Anything producing HTML
 
 Parser output goes through DOMPurify **in the adapter**, before it reaches

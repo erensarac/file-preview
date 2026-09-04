@@ -16,6 +16,38 @@ permissions:
   contents: read
 
 jobs:
+  # Separate from the suite, and deliberately cheap: it reads the lockfile and
+  # asks the registry, so it needs no install, no browser and no build, and it
+  # answers in seconds rather than waiting behind three minutes of tests.
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # ── Why `high` and not `moderate` ─────────────────────────────────────
+      #
+      # Two moderate advisories are known and accepted: `exceljs` depends on a
+      # version of `uuid` with a missing bounds check, and the only fix npm
+      # offers is exceljs@3.4.0 — a *downgrade* across a major version, for a
+      # parser this project leans on heavily. The trade is not worth it, and a
+      # gate that is red on day one teaches everyone to ignore it.
+      #
+      # ── What this does not see ────────────────────────────────────────────
+      #
+      # `xlsx` is installed from a tarball URL, and the advisory database keys
+      # on registry versions — so npm audit has nothing to say about it, and
+      # its silence there is not evidence of anything. That was measured while
+      # choosing the dependency: `node-xlsx`, which wraps the same tarball,
+      # audits perfectly clean for exactly this reason.
+      - name: Known advisories
+        run: npm audit --audit-level=high
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15

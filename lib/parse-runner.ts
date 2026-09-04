@@ -56,6 +56,17 @@ export const PARSE_MEMORY_MB = 256;
 export class ParseTimeoutError extends Error {}
 export class ParseMemoryError extends Error {}
 
+/**
+ * The parser could not be *started*, or died without speaking.
+ *
+ * Distinct from `ParserError`, which is a parser reporting that it could not
+ * read a file, because the two are opposite claims: one is about the file and
+ * the other is about us. Collapsing them told a user their perfectly good
+ * workbook might be corrupt — which is what the deployment did, in production,
+ * for as long as nobody had checked.
+ */
+export class ParseUnavailableError extends Error {}
+
 /** The failure a parser reports for itself, carried back rather than thrown. */
 export class ParserError extends Error {
   constructor(
@@ -112,6 +123,14 @@ export function runParseInWorker(
   limits: WorkerLimits,
   timeoutMs: number = PARSE_TIMEOUT_MS,
   memoryMb: number = PARSE_MEMORY_MB,
+  /*
+   * A parameter for one reason: "the child is not on disk" is the failure this
+   * whole file's deployment risk is about — `next.config.ts` forces the file
+   * into the traced output, and nothing imports it, so the directive failing
+   * is silent. There is no other way to reach that path in a test, and it is
+   * not hypothetical: it is what a broken deployment looks like.
+   */
+  childPath: string = CHILD_PATH,
 ): Promise<{ result: WorkerResult; notices: string[] }> {
   return new Promise((resolve, reject) => {
     /*
@@ -127,7 +146,7 @@ export function runParseInWorker(
      */
     const child = spawn(
       process.execPath,
-      [`--max-old-space-size=${memoryMb}`, CHILD_PATH],
+      [`--max-old-space-size=${memoryMb}`, childPath],
       {
         /*
          * Structured clone rather than the default JSON. A few megabytes of
@@ -187,7 +206,12 @@ export function runParseInWorker(
       }
     });
 
-    child.on("error", (error) => finish(() => reject(error)));
+    // Spawn refused outright: the binary, the path, or the platform.
+    child.on("error", (error) =>
+      finish(() =>
+        reject(new ParseUnavailableError(`Could not start the parser: ${error.message}`)),
+      ),
+    );
 
     /*
      * The only place a memory kill can be recognised. The child dies without
@@ -205,9 +229,16 @@ export function runParseInWorker(
           );
           return;
         }
+        /*
+         * Died without replying, and not for memory. A missing child file
+         * looks exactly like this: node starts, cannot resolve the module,
+         * writes to stderr and exits 1. So does a platform that refuses to let
+         * a function spawn anything.
+         */
         reject(
-          new Error(
-            `Parse process stopped unexpectedly (code ${code}, signal ${signal})`,
+          new ParseUnavailableError(
+            `Parse process stopped unexpectedly (code ${code}, signal ${signal})` +
+              (stderr ? `: ${stderr.slice(0, 300)}` : ""),
           ),
         );
       });

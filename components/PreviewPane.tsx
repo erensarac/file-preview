@@ -10,7 +10,13 @@ import PdfViewer from "./viewers/PdfViewer";
 import SheetViewer from "./viewers/SheetViewer";
 import TextViewer from "./viewers/TextViewer";
 
-function Viewer({ preview }: { preview: PreviewDocument["preview"] }) {
+function Viewer({
+  preview,
+  onOpen,
+}: {
+  preview: PreviewDocument["preview"];
+  onOpen: (file: File) => void;
+}) {
   switch (preview.kind) {
     case "sheet":
       return <SheetViewer sheets={preview.sheets} />;
@@ -29,6 +35,8 @@ function Viewer({ preview }: { preview: PreviewDocument["preview"] }) {
         <ArchiveViewer
           entries={preview.entries}
           totalUncompressed={preview.totalUncompressed}
+          file={preview.file}
+          onOpen={onOpen}
         />
       );
   }
@@ -37,9 +45,16 @@ function Viewer({ preview }: { preview: PreviewDocument["preview"] }) {
 export default function PreviewPane({
   document,
   onClose,
+  onOpen,
 }: {
   document: PreviewDocument;
   onClose: () => void;
+  /**
+   * Opens a file the viewer produced rather than the user dropped — today only
+   * an entry pulled out of an archive. It goes back through the same path a
+   * drop takes, so nothing here needs to know how the registry routes it.
+   */
+  onOpen: (file: File) => void;
 }) {
   const { meta } = document;
 
@@ -85,7 +100,7 @@ export default function PreviewPane({
       )}
 
       <div className="min-h-0 flex-1 overflow-hidden">
-        <Viewer preview={document.preview} />
+        <Viewer preview={document.preview} onOpen={onOpen} />
       </div>
     </section>
   );

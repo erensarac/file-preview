@@ -208,6 +208,8 @@ const parseZip: ClientParser = async (file, notices) => {
     kind: "archive",
     entries: files,
     totalUncompressed: report.uncompressedBytes,
+    // Kept, not copied: opening an entry seeks back into this same file.
+    file,
   };
 };
 

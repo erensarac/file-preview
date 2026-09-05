@@ -5,6 +5,11 @@ import { expect, test } from "@playwright/test";
 
 import { FIXTURE_DIR } from "./fixtures";
 import {
+  EntryTooLargeError,
+  EntryUnreadableError,
+  readArchiveEntry,
+} from "@/lib/archive-extract";
+import {
   allFiles,
   breadcrumbs,
   isMacMetadata,
@@ -237,6 +242,10 @@ test.describe("an archive read as folders", () => {
     uncompressedBytes: size,
     encrypted: false,
     directory,
+    // Irrelevant to reading the tree, and present because the type carries
+    // what *opening* an entry needs.
+    method: 8,
+    localHeaderOffset: 0,
   });
 
   const bundle = [
@@ -325,11 +334,11 @@ test.describe("macOS bookkeeping", () => {
 
   test("a Finder archive lists each file once, and says how many it hid", () => {
     const fromFinder = [
-      { name: "photos/", compressedBytes: 0, uncompressedBytes: 0, encrypted: false, directory: true },
-      { name: "photos/one.png", compressedBytes: 50, uncompressedBytes: 100, encrypted: false, directory: false },
-      { name: "__MACOSX/", compressedBytes: 0, uncompressedBytes: 0, encrypted: false, directory: true },
-      { name: "__MACOSX/photos/._one.png", compressedBytes: 60, uncompressedBytes: 120, encrypted: false, directory: false },
-      { name: "photos/.DS_Store", compressedBytes: 30, uncompressedBytes: 60, encrypted: false, directory: false },
+      { name: "photos/", compressedBytes: 0, uncompressedBytes: 0, encrypted: false, directory: true, method: 8, localHeaderOffset: 0 },
+      { name: "photos/one.png", compressedBytes: 50, uncompressedBytes: 100, encrypted: false, directory: false, method: 8, localHeaderOffset: 0 },
+      { name: "__MACOSX/", compressedBytes: 0, uncompressedBytes: 0, encrypted: false, directory: true, method: 8, localHeaderOffset: 0 },
+      { name: "__MACOSX/photos/._one.png", compressedBytes: 60, uncompressedBytes: 120, encrypted: false, directory: false, method: 8, localHeaderOffset: 0 },
+      { name: "photos/.DS_Store", compressedBytes: 30, uncompressedBytes: 60, encrypted: false, directory: false, method: 8, localHeaderOffset: 0 },
     ];
 
     const root = listArchive(fromFinder, "");
@@ -343,5 +352,136 @@ test.describe("macOS bookkeeping", () => {
     expect(photos.nodes.map((node) => node.name)).toEqual(["one.png"]);
     // The real file's size, not the resource fork's.
     expect(photos.nodes[0]!.uncompressedBytes).toBe(100);
+  });
+});
+
+/**
+ * Reading one file out of an archive.
+ *
+ * Everything else about this feature was built on decompressing nothing — the
+ * bomb guard reads an archive's own bookkeeping precisely so a hostile file is
+ * refused before anything allocates. Opening an entry gives that up on
+ * purpose, for one entry, at a person's explicit request, which is why the
+ * bound moves from what the archive *claims* to what actually arrives.
+ */
+test.describe("opening a file inside an archive", () => {
+  async function entriesOf(name: string) {
+    const bytes = bytesOf(name);
+    const at = locateCentralDirectory(bytes.slice(-65_557), bytes.length);
+    return listCentralDirectory(
+      bytes.slice(at.offset, at.offset + at.size),
+      at.entries,
+    ).files;
+  }
+
+  const asFile = (name: string) =>
+    new File([bytesOf(name) as BlobPart], name);
+
+  test("reads a deflated entry", async () => {
+    const entries = await entriesOf("bundle.zip");
+    const guide = entries.find((entry) => entry.name === "docs/guide.md")!;
+
+    const bytes = await readArchiveEntry(asFile("bundle.zip"), guide);
+    expect(new TextDecoder().decode(bytes)).toContain("# Guide");
+  });
+
+  /**
+   * A different read path: stored entries have no compressed stream at all,
+   * and treating them as deflate would fail on the first byte.
+   */
+  test("reads a stored entry", async () => {
+    const entries = await entriesOf("bundle.zip");
+    const stored = entries.find((entry) => entry.name === "stored.txt")!;
+    expect(stored.method).toBe(0);
+
+    const bytes = await readArchiveEntry(asFile("bundle.zip"), stored);
+    expect(new TextDecoder().decode(bytes)).toContain("kept as-is");
+  });
+
+  /**
+   * The assertion the whole safety argument rests on. This archive declares
+   * 64 bytes for an entry that expands to two megabytes — which nothing
+   * writing a zip honestly can produce, and which a ceiling based on the
+   * declared size would wave straight through.
+   */
+  test("stops at what arrives, not at what the archive claims", async () => {
+    const entries = await entriesOf("lying.zip");
+    const liar = entries[0]!;
+    // The lie itself, so this test fails loudly if the fixture stops lying.
+    expect(liar.uncompressedBytes).toBe(64);
+
+    const failure = await readArchiveEntry(asFile("lying.zip"), liar, 4096).catch(
+      (error: unknown) => error,
+    );
+
+    expect(failure).toBeInstanceOf(EntryTooLargeError);
+  });
+
+  test("refuses a compression it does not read, by name", async () => {
+    const entries = await entriesOf("bundle.zip");
+    const guide = entries.find((entry) => entry.name === "docs/guide.md")!;
+
+    const failure = await readArchiveEntry(
+      asFile("bundle.zip"),
+      { ...guide, method: 99 },
+    ).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(EntryUnreadableError);
+    expect((failure as Error).message).toContain("compression");
+  });
+});
+
+test.describe("opening an entry in the browser", () => {
+  test("a CSV inside an archive opens as a table", async ({ page }) => {
+    await page.goto("/");
+    await page.setInputFiles('input[type="file"]', fixture("bundle.zip"));
+
+    await page.getByTestId("folder-data").click();
+    await page.getByTestId("entry-big.csv").click();
+
+    // The registry routed it: same detection, same viewer, same everything a
+    // dropped CSV gets.
+    await expect(page.getByTestId("sheet-find")).toBeVisible();
+    await expect(page.locator("table")).toBeVisible();
+  });
+
+  test("a Markdown file inside an archive renders", async ({ page }) => {
+    await page.goto("/");
+    await page.setInputFiles('input[type="file"]', fixture("bundle.zip"));
+
+    await page.getByTestId("folder-docs").click();
+    await page.getByTestId("entry-guide.md").click();
+
+    // Scoped to the rendered document: the pane's own header says "guide.md",
+    // which matches loosely and would let this pass on the filename alone.
+    await expect(
+      page.locator(".rendered-doc").getByRole("heading", { name: "Guide" }),
+    ).toBeVisible();
+  });
+
+  /**
+   * The line this feature deliberately does not cross. A server-parsed format
+   * would mean uploading bytes that arrived inside another file — one the
+   * person chose to look *into*, not to send — so it says so instead.
+   */
+  test("a spreadsheet inside an archive says why it cannot open here", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await page.setInputFiles('input[type="file"]', fixture("bundle.zip"));
+
+    await page.getByTestId("folder-reports").click();
+
+    const posts: string[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "POST") posts.push(request.url());
+    });
+
+    await page.getByTestId("entry-quarter.xlsx").click();
+    await expect(page.locator('[role="alert"]').first()).toContainText(
+      /converted on the server/i,
+    );
+    // And nothing left the device while it said so.
+    expect(posts).toEqual([]);
   });
 });

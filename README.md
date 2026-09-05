@@ -214,9 +214,31 @@ Two things this format invites, and what is done about them:
   without reading them; the listing keeps that property by refusing to collect
   past the count the guard would reject anyway.
 
+A file inside the archive opens by clicking it. That is the one place this
+feature decompresses anything, and it changes what the safety argument rests
+on: the listing trusts the archive's own bookkeeping precisely so nothing is
+inflated, while opening an entry inflates exactly one, at a person's explicit
+request.
+
+So the ceiling is counted from the bytes that actually arrive rather than from
+the size the archive declares — a zip may claim sixty-four bytes for something
+that expands to two megabytes, and the declared figure is a claim by the same
+file that would benefit from lying. A fixture with its central directory
+patched to tell exactly that lie is what pins it. `DecompressionStream` does
+the inflating, so there is no new dependency; "deflate-raw" rather than
+"deflate", because a zip stores compressed data without a zlib wrapper.
+
+Everything downstream is the registry's: a CSV inside an archive opens as the
+same table a dropped CSV does, under the same size cap for its format.
+
+**A server-parsed entry is deliberately refused, and says why.** Opening one
+would mean uploading bytes that arrived inside another file — a file the person
+chose to look *into*, not to send. The site's rule for a dropped `.xlsx` is
+that it goes to the server; extending that rule through a container is a
+decision rather than a detail, so it is not taken by default.
+
 Office formats are zips too, and they keep opening as themselves: detection is
-by extension, so only a file actually named `.zip` is listed. Opening a file
-*inside* an archive is a different feature and is not offered.
+by extension, so only a file actually named `.zip` is listed.
 
 ## Syntax highlighting
 

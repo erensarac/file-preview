@@ -120,6 +120,32 @@ export const LANDING_PAGES: readonly LandingPage[] = [
       "HEIC is not supported, and that is deliberate. No browser can decode it, so supporting it would mean shipping a decoder just to open a holiday photo — the weight this site exists to avoid.",
     ],
   },
+  {
+    slug: "xls-viewer",
+    formatId: "xls",
+    title: "XLS viewer — open old Excel files online",
+    description:
+      "Open a pre-2007 .xls spreadsheet in your browser. Every sheet, formula values, and nothing kept afterwards.",
+    headline: "Open an .xls that nothing else will",
+    body: [
+      "Drop an .xls file below. It opens as a table with each sheet on its own tab, columns you can resize, and a search that reaches every row rather than the screenful in front of you.",
+      "The old format is a different file from a modern .xlsx — an OLE compound document of BIFF records rather than a zip of XML — which is why so much software that reads one refuses the other. This site reads both, with a separate parser for each.",
+      "It is converted on the server, because the parser is far too heavy to send to your browser. The file is held in memory for that one request and then discarded: nothing is written to disk and nothing is kept.",
+    ],
+  },
+  {
+    slug: "zip-viewer",
+    formatId: "zip",
+    title: "ZIP viewer — see inside a zip file online",
+    description:
+      "List what is inside a .zip in your browser. Nothing is uploaded and nothing is decompressed.",
+    headline: "See what is in a zip before you unpack it",
+    body: [
+      "Drop a .zip below and it lists what is inside: every entry's name, its unpacked size and its packed size, filterable by name.",
+      "Nothing is decompressed and the archive is never read. A zip keeps an index of itself at the end of the file, so this reads the last few kilobytes and the directory they point at — which is why a 500 MB archive costs no more than a small one, and why none of it leaves your device.",
+      "It answers the question you usually have about an archive: what is in here, and is it the thing I meant to download. Opening the files inside it is a different job, and this does not claim to do it.",
+    ],
+  },
 ] as const;
 
 export function landingPageBySlug(slug: string): LandingPage | undefined {

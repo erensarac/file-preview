@@ -40,6 +40,36 @@ import { join } from "node:path";
  * written, taken deliberately.
  */
 
+/**
+ * Never called. It exists so the deployment contains the parsers.
+ *
+ * The child is a plain `.mjs` spawned by path, which is what lets it be
+ * stopped — and it means the bundler never reads it. `next.config.ts` copies
+ * the file into the traced output, but copying a file is not the same as
+ * following what it imports: `exceljs`, `mammoth` and `xlsx` are named only
+ * inside it, so nothing told the tracer they were needed.
+ *
+ * The result was a deployment that shipped the child and none of its parsers.
+ * Every Office upload failed, and — until the message was fixed — told the
+ * user their file might be corrupt. Measured rather than reasoned: before this
+ * function existed, `grep -rl node_modules/exceljs .next/server/**\/*.nft.json`
+ * matched **zero** files.
+ *
+ * Dynamic imports in a module the tracer *does* read make it follow them, and
+ * following them brings their transitive dependencies too, which is the part a
+ * hand-written include list cannot get right. The environment check is what
+ * stops the compiler folding this away as unreachable; `tests/tracing.spec.ts`
+ * asserts the effect on the build output rather than trusting the trick.
+ */
+export async function parsersForTracing(): Promise<unknown[]> {
+  if (process.env.NEVER_SET !== "1") return [];
+  return Promise.all([
+    import("exceljs"),
+    import("mammoth"),
+    import("xlsx"),
+  ]);
+}
+
 /** A parse that has not finished by now is not going to. */
 export const PARSE_TIMEOUT_MS = 8_000;
 

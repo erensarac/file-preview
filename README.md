@@ -543,6 +543,17 @@ there — including lines that impersonate other entries.
   from having no network. `components/FileWorkbench.tsx` tells the two apart
   by asking for a status directly, so a refused upload says to wait a minute
   rather than blaming the connection.
+- The parsers are marked **external** and referenced from traced code, and both
+  halves are load-bearing. External means "left on disk as files" rather than
+  compiled into a server chunk — and a chunk is invisible to the child process,
+  which resolves them from `node_modules` at runtime. Being referenced is what
+  makes the tracer include them at all: the child is spawned by path, so the
+  bundler never reads it, and the only mentions of `exceljs`, `mammoth` and
+  `xlsx` were inside a file nothing analysed. The deployment shipped the child
+  and none of its parsers, every Office upload failed, and every local test
+  passed. `tests/tracing.spec.ts` now reads the build's own manifest, because
+  the thing to check is the artefact rather than a server that happens to have
+  `node_modules` beside it.
 - A parser that could not be **started** is reported as our failure, not as a
   problem with the file. They are opposite claims, and collapsing them is not
   hypothetical: the deployment check found production telling people a

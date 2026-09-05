@@ -13,7 +13,7 @@ import { FIXTURE_DIR } from "./fixtures";
  * malformed. Anyone could provoke it with one `curl`, which made the failure
  * log added for observability something a stranger could fill with noise.
  *
- * `middleware.ts` refuses these before the framework tries. What follows pins
+ * `proxy.ts` refuses these before the framework tries. What follows pins
  * down both halves: the malformed shapes are refused, and the genuine one —
  * identical in method, path and content type — still goes through.
  */

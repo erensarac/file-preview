@@ -129,3 +129,60 @@ test.describe("a client failure report", () => {
     expect(posts).toEqual([]);
   });
 });
+
+/**
+ * The same report, sent somewhere a person actually looks.
+ *
+ * The structured line was written throughout a release in which no Office file
+ * could be opened at all, and helped nobody — the diagnosis came from driving
+ * a browser at production. A log nobody visits is an archive, not
+ * observability, so the report now also goes out as an analytics event.
+ *
+ * What matters about that event is what it carries. Asserting on the outbound
+ * call would mostly assert that a vendor's client works; asserting on the
+ * payload is the check that the three things deliberately absent from a
+ * failure report stay absent when it travels by a second route.
+ */
+test.describe("the analytics event a failure produces", () => {
+  test("carries the five allowed fields and nothing else", async () => {
+    const { failureEvent } = await import("@/lib/telemetry");
+
+    const event = failureEvent({
+      formatId: "xlsx",
+      runtime: "server",
+      phase: "parse",
+      errorName: "TypeError",
+      sizeBucket: "<4MB",
+    });
+
+    expect(event.name).toBe("file.failure");
+    // Exactly these keys: a new one cannot be added here without going through
+    // `FailureReport`, which is where the reasons for the absences are written.
+    expect(Object.keys(event.properties).sort()).toEqual([
+      "error",
+      "format",
+      "phase",
+      "runtime",
+      "size",
+    ]);
+  });
+
+  test("cannot carry a filename, a message or an exact size", async () => {
+    const { failureEvent } = await import("@/lib/telemetry");
+
+    const event = failureEvent({
+      formatId: "docx",
+      runtime: "server",
+      phase: "parse",
+      errorName: "Error",
+      sizeBucket: "<1MB",
+    });
+
+    const serialized = JSON.stringify(event);
+    // The three exclusions, checked against the thing that leaves the server
+    // rather than against the intention behind it.
+    expect(serialized).not.toMatch(/\.docx|\.xlsx|filename/i);
+    expect(serialized).not.toMatch(/\b\d{3,}\b/);
+    expect(serialized).not.toMatch(/message/i);
+  });
+});

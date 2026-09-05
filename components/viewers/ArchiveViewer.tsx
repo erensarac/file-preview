@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 
+import { readArchiveEntry } from "@/lib/archive-extract";
 import { allFiles, breadcrumbs, listArchive } from "@/lib/archive-tree";
-import { formatBytes } from "@/lib/formats";
+import { detectFormat, formatBytes } from "@/lib/formats";
 import type { ArchiveEntry } from "@/lib/preview";
 
 /**
@@ -22,9 +23,15 @@ import type { ArchiveEntry } from "@/lib/preview";
 export default function ArchiveViewer({
   entries,
   totalUncompressed,
+  file,
+  onOpen,
 }: {
   entries: ArchiveEntry[];
   totalUncompressed: number;
+  /** The archive itself, since opening an entry seeks back into it. */
+  file: File;
+  /** Hands the extracted file to whatever opens files here. */
+  onOpen: (opened: File) => void;
 }) {
   const [query, setQuery] = useState("");
   /**
@@ -54,6 +61,58 @@ export default function ArchiveViewer({
   const trail = breadcrumbs(path);
   const searching = query.trim() !== "";
   const fileCount = useMemo(() => allFiles(entries).length, [entries]);
+  const [opening, setOpening] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  /**
+   * Opens one entry, by handing its bytes back as an ordinary file.
+   *
+   * Everything downstream — detection, the size caps, the viewer — is the
+   * registry's, so a CSV inside an archive opens as the same table a dropped
+   * CSV does. The only thing decided here is whether to start.
+   */
+  const openEntry = async (node: { name: string; path: string }) => {
+    const entry = entries.find((candidate) => candidate.name === node.path);
+    if (!entry) return;
+
+    setProblem(null);
+    setOpening(node.path);
+    try {
+      const base = node.name.split("/").pop() || node.name;
+      const spec = detectFormat(base, "");
+
+      if (!spec) {
+        setProblem(`We can't open ${base} yet.`);
+        return;
+      }
+      /*
+       * Deliberate, and the one thing an archive cannot do that a drop can.
+       *
+       * A server-parsed format would mean uploading bytes that arrived inside
+       * another file — a file the person chose to look *into*, not to send.
+       * The site's rule for a dropped .xlsx is that it goes to the server, and
+       * extending that rule through a container is a decision rather than a
+       * detail, so it is not taken here by default.
+       */
+      if (spec.runtime === "server") {
+        setProblem(
+          `${base} is a ${spec.label} file, which is converted on the server. Files inside an archive are only opened here in your browser, so this one needs extracting first.`,
+        );
+        return;
+      }
+
+      const bytes = await readArchiveEntry(file, entry, spec.maxBytes);
+      onOpen(new File([bytes as BlobPart], base));
+    } catch (cause) {
+      setProblem(
+        cause instanceof Error
+          ? cause.message
+          : "That file couldn't be read out of the archive.",
+      );
+    } finally {
+      setOpening(null);
+    }
+  };
 
   return (
     <div className="flex min-h-0 flex-col">
@@ -122,6 +181,15 @@ export default function ArchiveViewer({
         </nav>
       )}
 
+      {problem !== null && (
+        <p
+          role="alert"
+          className="mx-4 my-2 rounded-lg border border-accent/40 bg-accent/5 px-3 py-2 text-xs"
+        >
+          {problem}
+        </p>
+      )}
+
       <div
         role="region"
         aria-label="Archive contents"
@@ -180,7 +248,20 @@ export default function ArchiveViewer({
                         <span className="sr-only"> folder, {node.files} files</span>
                       </button>
                     ) : (
-                      <span className="break-all">{node.name}</span>
+                      <button
+                        type="button"
+                        data-testid={`entry-${node.name}`}
+                        disabled={opening !== null}
+                        onClick={() => void openEntry(node)}
+                        className="break-all rounded text-left hover:text-ink disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                      >
+                        {node.name}
+                        {opening === node.path && (
+                          <span className="ml-2 text-xs text-muted">
+                            opening…
+                          </span>
+                        )}
+                      </button>
                     )}
                     {node.encrypted && (
                       <span

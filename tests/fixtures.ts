@@ -436,10 +436,45 @@ export async function buildFixtures(): Promise<void> {
   archive.file("__MACOSX/._readme.txt", "resource fork\n");
   archive.file("__MACOSX/docs/._guide.md", "resource fork\n");
   archive.file("docs/.DS_Store", "finder bookkeeping\n");
+  // A spreadsheet inside, to pin what happens when an entry needs the server.
+  archive.file("reports/quarter.xlsx", "not really a workbook\n");
+  // Stored rather than deflated, which is a different read path entirely.
+  archive.file("stored.txt", "kept as-is, not compressed\n", {
+    compression: "STORE",
+  });
   writeFileSync(
     at("bundle.zip"),
     await archive.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }),
   );
+
+  /*
+   * An archive that lies about how big something inside it is.
+   *
+   * The declared sizes are a claim by the same file that would benefit from
+   * lying, so the ceiling on opening an entry has to be counted from the bytes
+   * that actually arrive. Nothing that writes a zip honestly can produce this
+   * case, so it is made by hand: a real archive with one entry's declared
+   * uncompressed size overwritten with a small number.
+   */
+  const liar = new JSZip();
+  liar.file("looks-small.txt", "x".repeat(2 * 1024 * 1024));
+  const lying = await liar.generateAsync({
+    type: "nodebuffer",
+    compression: "DEFLATE",
+  });
+
+  const CENTRAL_SIGNATURE = 0x02014b50;
+  const view = new DataView(lying.buffer, lying.byteOffset, lying.byteLength);
+  let patched = false;
+  for (let at = 0; at + 46 < lying.byteLength; at += 1) {
+    if (view.getUint32(at, true) !== CENTRAL_SIGNATURE) continue;
+    // Uncompressed size sits at +24 of a central directory header.
+    view.setUint32(at + 24, 64, true);
+    patched = true;
+    break;
+  }
+  if (!patched) throw new Error("could not find the central directory to patch");
+  writeFileSync(at("lying.zip"), lying);
 
   /*
    * The pre-2007 format, written by the same library that reads it.

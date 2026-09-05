@@ -48,7 +48,20 @@ export type Preview =
    * index is the whole operation. Opening an entry would be a different
    * feature with different risks.
    */
-  | { kind: "archive"; entries: ArchiveEntry[]; totalUncompressed: number };
+  /**
+   * An archive, carried with the file it was read from.
+   *
+   * The listing costs a few kilobytes from the end of the file, and opening
+   * something inside it means seeking back into the rest — so the `File` is
+   * kept rather than its bytes. A reference costs nothing; a copy of a 500 MB
+   * archive would be the whole point of reading only the index thrown away.
+   */
+  | {
+      kind: "archive";
+      entries: ArchiveEntry[];
+      totalUncompressed: number;
+      file: File;
+    };
 
 export interface ArchiveEntry {
   /** As stored in the archive, and treated as text rather than as a path. */
@@ -57,6 +70,10 @@ export interface ArchiveEntry {
   uncompressedBytes: number;
   encrypted: boolean;
   directory: boolean;
+  /** 0 stored, 8 deflate. Anything else is a compression we do not read. */
+  method: number;
+  /** Where the entry's own header and data sit, for opening it later. */
+  localHeaderOffset: number;
 }
 
 export interface PreviewMeta {

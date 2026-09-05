@@ -61,6 +61,17 @@ export interface ZipEntry {
   encrypted: boolean;
   /** Directories are stored as zero-length entries whose name ends in "/". */
   directory: boolean;
+  /** 0 stored, 8 deflate. Anything else is a compression we do not read. */
+  method: number;
+  /**
+   * Where this entry's *local* header sits in the file.
+   *
+   * The central directory is an index; the bytes live behind a second header
+   * next to the data itself, and only that one says how long its own name and
+   * extra field are. So reading an entry means seeking here and reading again
+   * rather than trusting the index's arithmetic.
+   */
+  localHeaderOffset: number;
 }
 
 /**
@@ -137,6 +148,7 @@ function walkCentralDirectory(
     }
 
     const flags = view.getUint16(at + 8, true);
+    const method = view.getUint16(at + 10, true);
     const compressed = view.getUint32(at + 20, true);
     const uncompressed = view.getUint32(at + 24, true);
     if (compressed === ZIP64_SENTINEL || uncompressed === ZIP64_SENTINEL) {
@@ -163,6 +175,8 @@ function walkCentralDirectory(
         uncompressedBytes: uncompressed,
         encrypted: (flags & 1) === 1,
         directory: name.endsWith("/"),
+        method,
+        localHeaderOffset: view.getUint32(at + 42, true),
       });
     }
 

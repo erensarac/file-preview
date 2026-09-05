@@ -381,6 +381,14 @@ export default function FileWorkbench() {
             setDocument(null);
             setError(null);
           }}
+          /*
+           * A file that came out of an archive opens exactly like a dropped
+           * one: same detection, same caps, same viewer, same sequence ticket.
+           * The strip is deliberately left alone — the archive is still the
+           * file the person opened, and replacing it in the list would lose
+           * the way back to it.
+           */
+          onOpen={(inner) => void open(inner)}
         />
       )}
     </div>

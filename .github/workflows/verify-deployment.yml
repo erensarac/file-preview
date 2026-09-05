@@ -5,12 +5,27 @@
 # spec can cover them — the rules could be deleted tomorrow and every test here
 # would still be green.
 #
-# This runs on demand rather than on push. It sends a few hundred requests at
-# the real deployment on purpose, which is a reasonable thing to do just after
-# changing a firewall rule and an unreasonable thing to do on every commit.
+# Two triggers, because the two checks here cost very different things.
+#
+# The upload check runs itself after every production deployment. It was added
+# after a release in which no Office file could be opened at all — the whole
+# suite green, the platform answering 200, and nobody any the wiser until a
+# real file was pushed at the real deployment by hand. A check that only runs
+# when someone remembers to run it would not have caught that, and will not
+# catch the next one.
+#
+# The rate-limit check stays on demand. It sends a few hundred requests at
+# production on purpose, which is reasonable just after changing a firewall
+# rule and unreasonable on every merge.
 name: Verify deployment
 
 on:
+  # Not `push`. A merge to main is not a deployment: the build takes minutes,
+  # and testing at merge time measures whatever was live before it — a mistake
+  # made by hand several times before this was automated. `deployment_status`
+  # fires when the platform says the deployment is actually up.
+  deployment_status:
+
   workflow_dispatch:
     inputs:
       base_url:
@@ -53,6 +68,14 @@ jobs:
   # of doing so on an instance that was not already warm. One real upload
   # answers all three.
   office-upload:
+    # A production deployment that succeeded, or a hand-run. Vercel also
+    # deploys every pull request, and checking a preview build teaches nothing
+    # about the thing users are on — so the branch is what qualifies it, rather
+    # than an environment name that is the platform's to rename.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment.ref == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -88,7 +111,13 @@ jobs:
 
       - name: Upload an Excel file to the deployment
         env:
-          DEPLOYMENT_URL: ${{ inputs.base_url }}
+          # The URL the platform reports for the deployment it just finished,
+          # so the check reads the build it was woken for rather than whatever
+          # the domain happens to be serving a moment later.
+          DEPLOYMENT_URL: >-
+            ${{ inputs.base_url
+                || github.event.deployment_status.environment_url
+                || 'https://file-preview.vercel.app' }}
         run: npx playwright test --config playwright.deployment.config.ts
 
       # The page's own state at the moment it failed. Without this the log says
@@ -102,6 +131,9 @@ jobs:
 
   rate-limits:
     needs: office-upload
+    # Hand-run only. Two hundred and fifty requests at production is a
+    # deliberate act, not a per-deployment cost.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 

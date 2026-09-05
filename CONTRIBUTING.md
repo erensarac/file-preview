@@ -91,6 +91,25 @@ has a trade-off, the body is where it belongs, so the next person finds it with
 Pull requests are merged with a **merge commit**. Not squash, not rebase — the
 branch's own commits stay reachable in the history.
 
+## The deployment checks itself after every release
+
+`Verify deployment` runs an Office upload against production whenever the
+platform reports a successful deployment of `main`. It exists because of a
+release where **no Office file could be opened at all** — the suite green, the
+platform answering 200, and nobody the wiser until someone pushed a real file
+at the real deployment by hand.
+
+That failure could not have been caught locally. The parsers live in a child
+process spawned by path, so the bundler never reads it, and the deployment
+shipped the child script without them. A dev server has all of `node_modules`
+sitting beside it and cannot tell the difference; `tests/tracing.spec.ts` reads
+the build's trace manifest for exactly this reason, and the upload check is the
+backstop for whatever that spec does not think to look at.
+
+**If it goes red, the deployment is broken for users right now.** It is not a
+flaky end-to-end test to re-run — it drives a browser against production and
+asserts a fixture's own value appears on screen.
+
 ## Checking the rate limits
 
 Both things a caller can reach — uploading a file and reporting a browser-side

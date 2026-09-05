@@ -424,8 +424,18 @@ export async function buildFixtures(): Promise<void> {
   const archive = new JSZip();
   archive.file("readme.txt", "just a file\n");
   archive.folder("docs")!.file("guide.md", "# Guide\n\nsome text\n");
+  archive.file("docs/img/logo.txt", "pretend this is a picture\n");
   archive.file("../../etc/passwd", "not actually going anywhere\n");
   archive.file("data/big.csv", "col\n" + "1\n".repeat(4000));
+  /*
+   * What Finder puts in a zip: a parallel tree with an AppleDouble file per
+   * real one, plus the usual .DS_Store. Without filtering, a listing shows
+   * every file twice — once real, once as a few hundred bytes of resource
+   * fork — which is the complaint this fixture exists to reproduce.
+   */
+  archive.file("__MACOSX/._readme.txt", "resource fork\n");
+  archive.file("__MACOSX/docs/._guide.md", "resource fork\n");
+  archive.file("docs/.DS_Store", "finder bookkeeping\n");
   writeFileSync(
     at("bundle.zip"),
     await archive.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }),

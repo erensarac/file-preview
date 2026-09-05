@@ -22,11 +22,11 @@ import {
   looksEncryptedOffice,
 } from "@/lib/encrypted";
 import {
-  formatFailure,
   safeErrorName,
   sizeBucket,
   type FailurePhase,
 } from "@/lib/telemetry";
+import { reportFailure } from "@/lib/report-failure";
 import {
   ParseMemoryError,
   ParserError,
@@ -136,15 +136,13 @@ export async function previewFile(formData: FormData): Promise<PreviewResult> {
      * `lib/telemetry.ts` for why each of those is excluded.
      */
     const record = (phase: FailurePhase) =>
-      console.error(
-        formatFailure({
-          formatId: spec.id,
-          runtime: spec.runtime,
-          phase,
-          errorName: safeErrorName(error),
-          sizeBucket: sizeBucket(file.size),
-        }),
-      );
+      reportFailure({
+        formatId: spec.id,
+        runtime: spec.runtime,
+        phase,
+        errorName: safeErrorName(error),
+        sizeBucket: sizeBucket(file.size),
+      });
 
     /*
      * A password-protected `.xls` is only discovered by the parser.

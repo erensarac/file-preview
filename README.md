@@ -444,6 +444,20 @@ Three things are deliberately absent, and specs assert their absence:
   arrival, which meant the precise size had already left the device. A spec
   caught that.
 
+The same report also goes out as an analytics custom event, through the
+cookieless client already here for traffic — no second vendor, no new
+dependency, and the payload built from the same type, so the three exclusions
+above cannot be worked around by the second route. The line is written first
+and unconditionally: it is the record that survives a plan without custom
+events, an unreachable vendor, or any other reason the second half might
+quietly do nothing.
+
+That second route exists because the first was not enough. During a release in
+which no Office file could be opened at all, the line was being written the
+whole time and helped nobody — the diagnosis came from driving a browser at
+production. A log that only a dashboard visit reveals is an archive rather than
+observability.
+
 A client-parsed file therefore still touches the network exactly never when it
 opens, and sends this one line when it does not. Every field of it is validated
 on arrival rather than trusted: the action is reachable by anyone and its

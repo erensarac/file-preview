@@ -97,6 +97,35 @@ export function sizeBucket(bytes: number): string {
 export const FAILURE_PREFIX = "file.failure";
 
 /**
+ * The same report as an analytics event.
+ *
+ * It lives here rather than beside the code that sends it, and that is the
+ * point: the payload is built from a `FailureReport`, so the three things this
+ * file argues should never be sent cannot be added to the second route without
+ * passing the type that explains why they are absent.
+ *
+ * Kept apart from the sending for one more reason — the honest check for a
+ * payload is its contents, and a test that can read this needs no vendor, no
+ * network and no server.
+ */
+export function failureEvent(report: FailureReport): {
+  name: string;
+  properties: Record<string, string>;
+} {
+  return {
+    // The same prefix as the log line, so a search for one finds the other.
+    name: FAILURE_PREFIX,
+    properties: {
+      format: report.formatId,
+      runtime: report.runtime,
+      phase: report.phase,
+      error: report.errorName,
+      size: report.sizeBucket,
+    },
+  };
+}
+
+/**
  * One line, stable field order, no interpolated free text.
  *
  * Structured enough to grep and to aggregate, without pulling in a logging

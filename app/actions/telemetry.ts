@@ -2,11 +2,11 @@
 
 import { FORMATS, getFormat, type FormatId } from "@/lib/formats";
 import {
-  formatFailure,
   safeErrorName,
   SIZE_BUCKETS,
   type FailurePhase,
 } from "@/lib/telemetry";
+import { reportFailure } from "@/lib/report-failure";
 
 /**
  * Where a client-side failure goes.
@@ -61,15 +61,13 @@ export async function reportClientFailure(input: {
       ? input.sizeBucket
       : "unknown";
 
-  console.error(
-    formatFailure({
-      formatId,
-      // Taken from the registry rather than from the caller: a client cannot
-      // claim a failure happened in a runtime it did not happen in.
-      runtime: getFormat(formatId).runtime,
-      phase,
-      errorName: safeErrorName(input.errorName),
-      sizeBucket: band,
-    }),
-  );
+  reportFailure({
+    formatId,
+    // Taken from the registry rather than from the caller: a client cannot
+    // claim a failure happened in a runtime it did not happen in.
+    runtime: getFormat(formatId).runtime,
+    phase,
+    errorName: safeErrorName(input.errorName),
+    sizeBucket: band,
+  });
 }

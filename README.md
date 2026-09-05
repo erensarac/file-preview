@@ -259,16 +259,17 @@ new `Preview` variant and viewer, as PDF and images did.
 ## Landing pages
 
 People do not search for "file preview" — they search for "open xlsx online" or
-"view a docx without Word". `lib/landing.ts` carries a page for seven of the
+"view a docx without Word". `lib/landing.ts` carries a page for nine of the
 eleven formats — the ones people name when they search — and
 `app/[viewer]/page.tsx` prerenders them with their own titles, descriptions and
 canonical URLs.
 
 TSV and plain text have none, and that is a decision rather than a gap: TSV
 shares the CSV viewer and is looked for as a spreadsheet, and nobody searches
-for a plain-text viewer. The images page was the one real omission — "open a
-webp" is a search people make, usually because their system's photo viewer
-refused a file their browser handles perfectly well. `dynamicParams` is off, so an unlisted slug is a 404 rather than
+for a plain-text viewer. Everything else does, including the two formats that
+arrived most recently — "open xls online" and "see inside a zip" are both
+searches made by someone holding a file their computer will not open, which is
+the whole premise. `dynamicParams` is off, so an unlisted slug is a 404 rather than
 a dynamic segment answering for every unknown path on the site.
 
 The copy lives apart from `lib/formats.ts` deliberately: that registry describes

@@ -46,7 +46,7 @@ lib/parse-child.mjs     What that process runs. Loaded by path, so it is not bun
 lib/telemetry.ts        The shape of a failure report, and what it may not carry.
 app/actions/preview.ts  The upload API, as a server action. Re-validates everything.
 app/actions/telemetry.ts Where a browser-side failure is reported. Validates every field.
-middleware.ts           Refuses a POST shaped like a server action but carrying none.
+proxy.ts                Refuses a POST shaped like a server action but carrying none.
 components/             DropZone, PreviewPane, and one viewer per Preview kind.
 ```
 
@@ -514,7 +514,7 @@ there — including lines that impersonate other entries.
 - A `multipart/form-data` POST to a page path is decoded by the framework as a
   server action submission, and answered with a 500 when there is no action to
   find — a server error anyone could provoke with one `curl`, in the same log
-  that failures are supposed to be visible in. `middleware.ts` refuses those
+  that failures are supposed to be visible in. `proxy.ts` refuses those
   with a 405 before decoding is attempted. It keys on the `Next-Action` header
   that a genuine call carries, so a `<form action={…}>` posting without
   JavaScript would be refused by it; there is no such form here, and adding one

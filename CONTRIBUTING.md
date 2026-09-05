@@ -183,7 +183,13 @@ Three constraints that are easy to trip over:
 
 ## Server actions, and one thing that will refuse yours
 
-`middleware.ts` answers **405** to a `multipart/form-data` POST that carries no
+The file is `proxy.ts`, not `middleware.ts`: Next 16.3 deprecated that
+convention and warns about it at build time. The rename is the whole of the
+difference — a convention that is wrong about the name simply never runs, and
+a guard that never runs looks exactly like one that passes, which is why the
+specs that drive it matter more than the file's name does.
+
+`proxy.ts` answers **405** to a `multipart/form-data` POST that carries no
 `Next-Action` header. That exists because the framework decodes such a request
 as an action submission and throws when it cannot find one, answering 500 to a
 request anyone could send — a server error, in the log where real regressions

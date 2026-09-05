@@ -3,6 +3,12 @@ import { NextResponse, type NextRequest } from "next/server";
 /**
  * Refuses a POST that is shaped like a server action but is not one.
  *
+ * Named `proxy` in a file called `proxy.ts` because Next 16.3 deprecated the
+ * `middleware` convention it used to be. Nothing about what it does changed
+ * with the rename — and the specs below it are what say so, since a convention
+ * that is wrong about the name simply never runs, and a check that never runs
+ * looks exactly like one that passes.
+ *
  * ── What it fixes ────────────────────────────────────────────────────────
  *
  * A `multipart/form-data` POST to a page path made the framework try to decode
@@ -33,7 +39,7 @@ import { NextResponse, type NextRequest } from "next/server";
  * why the matcher is as narrow as it is: nothing without a multipart body and
  * no action header ever reaches this code.
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   // The matcher cannot express a method, so it is expressed here. A GET
   // carrying a multipart content-type is nonsense rather than an attack, and
   // answering 405 to it would be its own small bug.

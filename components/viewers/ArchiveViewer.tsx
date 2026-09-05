@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { allFiles, breadcrumbs, listArchive } from "@/lib/archive-tree";
 import { formatBytes } from "@/lib/formats";
 import type { ArchiveEntry } from "@/lib/preview";
 
@@ -26,29 +27,53 @@ export default function ArchiveViewer({
   totalUncompressed: number;
 }) {
   const [query, setQuery] = useState("");
+  /**
+   * Where in the archive we are, as a path the listing itself produced.
+   *
+   * Never assembled from user input and never resolved — it is only ever the
+   * `path` of a folder row that was clicked, or a prefix of one taken from the
+   * trail. That is what keeps navigation inside names the archive provided.
+   */
+  const [path, setPath] = useState("");
 
-  const files = useMemo(
-    () => entries.filter((entry) => !entry.directory),
-    [entries],
-  );
+  const listing = useMemo(() => listArchive(entries, path), [entries, path]);
 
+  /*
+   * A filter reaches the whole archive, not the folder in front of you.
+   * Someone typing a name is asking where it is, and answering "not in this
+   * directory" would be true and useless.
+   */
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (needle === "") return files;
-    return files.filter((entry) => entry.name.toLowerCase().includes(needle));
-  }, [files, query]);
+    if (needle === "") return listing.nodes;
+    return allFiles(entries).filter((node) =>
+      node.name.toLowerCase().includes(needle),
+    );
+  }, [entries, listing, query]);
 
-  const folders = entries.length - files.length;
+  const trail = breadcrumbs(path);
+  const searching = query.trim() !== "";
+  const fileCount = useMemo(() => allFiles(entries).length, [entries]);
 
   return (
     <div className="flex min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-4 py-2 text-xs text-muted">
         <span data-testid="archive-summary">
-          {files.length.toLocaleString()}{" "}
-          {files.length === 1 ? "file" : "files"}
-          {folders > 0 && `, ${folders.toLocaleString()} folders`} ·{" "}
+          {fileCount.toLocaleString()} {fileCount === 1 ? "file" : "files"} ·{" "}
           {formatBytes(totalUncompressed)} unpacked
         </span>
+        {listing.hiddenMetadata > 0 && (
+          <span data-testid="archive-hidden" className="text-muted">
+            {/*
+              Said rather than silently dropped. A listing that disagrees with
+              the archive's own entry count is a small mystery, and the answer
+              — Finder writes a shadow copy of every file — is worth a sentence
+              to anyone who has wondered why their zip looked twice its size.
+            */}
+            {listing.hiddenMetadata.toLocaleString()} macOS metadata{" "}
+            {listing.hiddenMetadata === 1 ? "entry" : "entries"} hidden
+          </span>
+        )}
         <label htmlFor="archive-filter" className="sr-only">
           Filter entries by name
         </label>
@@ -64,6 +89,39 @@ export default function ArchiveViewer({
         />
       </div>
 
+      {/*
+        The way back, derived from the path rather than remembered. Arriving at
+        a folder by any route gives the same trail, and there is no history to
+        fall out of step with what is on screen.
+      */}
+      {!searching && (
+        <nav
+          aria-label="Archive path"
+          className="flex flex-wrap items-center gap-1 border-b border-line px-4 py-1.5 text-xs text-muted"
+        >
+          <button
+            type="button"
+            data-testid="crumb-root"
+            onClick={() => setPath("")}
+            className="rounded px-1 hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            Archive
+          </button>
+          {trail.map((crumb) => (
+            <span key={crumb.path} className="flex items-center gap-1">
+              <span aria-hidden="true">/</span>
+              <button
+                type="button"
+                onClick={() => setPath(crumb.path)}
+                className="rounded px-1 break-all hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+              >
+                {crumb.name}
+              </button>
+            </span>
+          ))}
+        </nav>
+      )}
+
       <div
         role="region"
         aria-label="Archive contents"
@@ -74,9 +132,11 @@ export default function ArchiveViewer({
       >
         {shown.length === 0 ? (
           <p className="p-8 text-center text-sm text-muted">
-            {files.length === 0
+            {fileCount === 0
               ? "This archive has no files in it."
-              : "No entry matches that."}
+              : searching
+                ? "No entry matches that."
+                : "This folder is empty."}
           </p>
         ) : (
           <table className="w-full border-collapse text-sm">
@@ -103,11 +163,26 @@ export default function ArchiveViewer({
               </tr>
             </thead>
             <tbody>
-              {shown.map((entry, index) => (
-                <tr key={`${entry.name}-${index}`}>
+              {shown.map((node, index) => (
+                <tr key={`${node.path}-${index}`}>
                   <td className="border-b border-line px-4 py-1.5">
-                    <span className="break-all">{entry.name}</span>
-                    {entry.encrypted && (
+                    {node.directory ? (
+                      <button
+                        type="button"
+                        data-testid={`folder-${node.name}`}
+                        onClick={() => setPath(node.path)}
+                        className="break-all rounded text-left hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
+                      >
+                        {/* Named as a folder for a screen reader, since the
+                            trailing slash is the only visual cue. */}
+                        <span aria-hidden="true">📁 </span>
+                        {node.name}
+                        <span className="sr-only"> folder, {node.files} files</span>
+                      </button>
+                    ) : (
+                      <span className="break-all">{node.name}</span>
+                    )}
+                    {node.encrypted && (
                       <span
                         // Said in words rather than shown as an icon: this is
                         // the difference between "you have the file" and "you
@@ -119,10 +194,10 @@ export default function ArchiveViewer({
                     )}
                   </td>
                   <td className="border-b border-line px-4 py-1.5 text-right tabular-nums">
-                    {formatBytes(entry.uncompressedBytes)}
+                    {formatBytes(node.uncompressedBytes)}
                   </td>
                   <td className="border-b border-line px-4 py-1.5 text-right tabular-nums text-muted">
-                    {formatBytes(entry.compressedBytes)}
+                    {formatBytes(node.compressedBytes)}
                   </td>
                 </tr>
               ))}

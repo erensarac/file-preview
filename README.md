@@ -168,8 +168,28 @@ the modern format gets, so a locked file does not read as a broken one.
 
 ## Archives
 
-A `.zip` opens as a list of what is inside it: every entry's name, its unpacked
-size and its packed size, filterable by name.
+A `.zip` opens as the folders it stands for: directories you can walk into, a
+trail back out, and each row carrying its unpacked and packed size. A folder's
+size is summed from what is under it, so "how much is in here" is answerable
+without opening it.
+
+A zip has no directories, only names with slashes in them, so the tree is an
+agreement about how to read a flat list. `lib/archive-tree.ts` makes that
+agreement explicit and holds one rule above the rest: **a segment is a label,
+never a path component.** `../../etc/passwd` is a legal entry name, and it
+shows as a folder called `..` containing a folder called `..` — which is both
+what the file says and visibly odd, where a resolved path would be a quiet lie.
+
+**A zip made on macOS is filtered.** Finder writes a parallel `__MACOSX/` tree
+holding an AppleDouble file per real one — `__MACOSX/docs/._guide.md` beside
+`docs/guide.md` — so an unfiltered listing shows every file twice, once real
+and once as a few hundred bytes of resource fork, and the archive looks about
+twice the size it is. Those and `.DS_Store` are hidden, and the count is shown
+rather than the difference being left as a mystery.
+
+The filter reaches the whole archive rather than the folder in front of you,
+and shows full paths: someone typing a name is asking where it is, and "not in
+this directory" would be true and useless.
 
 **Nothing is decompressed.** A zip keeps an index of itself at the end of the
 file, so listing one means reading the last 64 KiB to find that record and then

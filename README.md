@@ -582,8 +582,13 @@ there — including lines that impersonate other entries.
   100,000-cell budget, completes in about 2.9 s inside the 256 MB ceiling.
 - All of those numbers come from a development container with 16 GB and no
   cgroup limit. On a serverless platform the function has its own memory budget
-  that this child draws from, so the ceiling is a share of a share, and the
-  spawn cost on a cold instance is unmeasured.
+  that this child draws from, so the ceiling is a share of a share.
+- On the deployment itself, measured from a browser rather than reasoned about:
+  a 6.9 KB workbook opens in **935 ms** on the first upload of a run and a
+  `.xls` in **326 ms** on the second — end to end, including the request, the
+  spawn, the module load and the parse. "First of a run" is not the same as a
+  cold instance, which cannot be forced from outside, so the first figure is an
+  upper bound on a warm one rather than a measurement of a cold one.
 - Server-parsed formats are capped at 4 MB because the deployment rejects
   larger request bodies at its edge, before any of this code runs. Raising a
   cap past that ceiling **fails the build** rather than shipping a limit the

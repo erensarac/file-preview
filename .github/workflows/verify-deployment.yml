@@ -172,13 +172,23 @@ jobs:
       - name: Open real files on the deployment
         if: steps.qualify.outputs.qualifies == 'true'
         env:
-          # The URL the platform reports for the deployment it just finished,
-          # so the check reads the build it was woken for rather than whatever
-          # the domain happens to be serving a moment later.
+          # The production domain, not the URL the event carries.
+          #
+          # `deployment_status.environment_url` was the first choice, on the
+          # reasoning that it names the exact build this run was woken for
+          # rather than whatever the domain is serving a moment later. Good
+          # reasoning, wrong address: that URL is per-deployment
+          # (`file-preview-4suekym9g-sarac.vercel.app`) and sits behind the
+          # platform's access protection, so it answers every request with a
+          # login page. The first real run of this check spent eight minutes
+          # timing out against one.
+          #
+          # The domain below is the one users are on, which is the thing this
+          # check exists to defend. The build it serves is the one that was
+          # just promoted; on the rare race where a newer deployment has
+          # replaced it, checking the newer one is not a wrong answer.
           DEPLOYMENT_URL: >-
-            ${{ inputs.base_url
-                || github.event.deployment_status.environment_url
-                || 'https://file-preview.vercel.app' }}
+            ${{ inputs.base_url || 'https://file-preview.vercel.app' }}
         run: npx playwright test --config playwright.deployment.config.ts
 
       # The page's own state at the moment it failed. Without this the log says

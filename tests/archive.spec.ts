@@ -460,28 +460,42 @@ test.describe("opening an entry in the browser", () => {
   });
 
   /**
-   * The line this feature deliberately does not cross. A server-parsed format
-   * would mean uploading bytes that arrived inside another file — one the
-   * person chose to look *into*, not to send — so it says so instead.
+   * The case that used to be refused. A spreadsheet is parsed on the server
+   * wherever it came from: being inside a container is not a different
+   * request, and the header says where it was parsed either way.
    */
-  test("a spreadsheet inside an archive says why it cannot open here", async ({
+  test("a spreadsheet inside an archive is converted on the server", async ({
     page,
   }) => {
     await page.goto("/");
     await page.setInputFiles('input[type="file"]', fixture("bundle.zip"));
 
     await page.getByTestId("folder-reports").click();
+    await page.getByTestId("entry-quarter.xlsx").click();
+
+    // The workbook itself came back, not just a viewer: this is a cell from
+    // the sheet the fixture builds.
+    await expect(page.getByRole("cell", { name: "February" })).toBeVisible();
+    // And it is labelled honestly, exactly as a dropped .xlsx would be.
+    await expect(page.getByText("converted on server")).toBeVisible();
+  });
+
+  /**
+   * The other half of the same rule: a format read in the browser is still
+   * read in the browser when it comes out of an archive.
+   */
+  test("a text entry still never leaves the device", async ({ page }) => {
+    await page.goto("/");
+    await page.setInputFiles('input[type="file"]', fixture("bundle.zip"));
 
     const posts: string[] = [];
     page.on("request", (request) => {
       if (request.method() === "POST") posts.push(request.url());
     });
 
-    await page.getByTestId("entry-quarter.xlsx").click();
-    await expect(page.locator('[role="alert"]').first()).toContainText(
-      /converted on the server/i,
-    );
-    // And nothing left the device while it said so.
+    await page.getByTestId("entry-readme.txt").click();
+
+    await expect(page.getByText("read locally")).toBeVisible();
     expect(posts).toEqual([]);
   });
 });

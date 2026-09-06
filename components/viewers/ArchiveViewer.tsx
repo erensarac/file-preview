@@ -86,21 +86,21 @@ export default function ArchiveViewer({
         return;
       }
       /*
-       * Deliberate, and the one thing an archive cannot do that a drop can.
+       * A server-parsed entry goes to the server, exactly as the same file
+       * would if it had been dropped.
        *
-       * A server-parsed format would mean uploading bytes that arrived inside
-       * another file — a file the person chose to look *into*, not to send.
-       * The site's rule for a dropped .xlsx is that it goes to the server, and
-       * extending that rule through a container is a decision rather than a
-       * detail, so it is not taken here by default.
+       * This was refused at first, on the reasoning that bytes arriving inside
+       * another file were not offered for sending. The argument that won is
+       * that the container is not what the person is choosing — clicking
+       * `quarter.xlsx` in an archive and dropping `quarter.xlsx` on the page
+       * are the same request, and answering them differently makes the rule
+       * depend on where the file happened to be rather than on what it is.
+       *
+       * So nothing is decided here. `onOpen` hands it to the same routing a
+       * drop takes, the header says "converted on server" for this file as it
+       * does for any other, and the format registry stays the single place
+       * that says where a format is parsed.
        */
-      if (spec.runtime === "server") {
-        setProblem(
-          `${base} is a ${spec.label} file, which is converted on the server. Files inside an archive are only opened here in your browser, so this one needs extracting first.`,
-        );
-        return;
-      }
-
       const bytes = await readArchiveEntry(file, entry, spec.maxBytes);
       onOpen(new File([bytes as BlobPart], base));
     } catch (cause) {

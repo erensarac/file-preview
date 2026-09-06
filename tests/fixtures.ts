@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 
@@ -436,8 +436,13 @@ export async function buildFixtures(): Promise<void> {
   archive.file("__MACOSX/._readme.txt", "resource fork\n");
   archive.file("__MACOSX/docs/._guide.md", "resource fork\n");
   archive.file("docs/.DS_Store", "finder bookkeeping\n");
-  // A spreadsheet inside, to pin what happens when an entry needs the server.
-  archive.file("reports/quarter.xlsx", "not really a workbook\n");
+  /*
+   * A real workbook inside, not a stand-in: opening it has to travel the whole
+   * route a dropped .xlsx takes — extracted here, detected by name, uploaded,
+   * parsed on the server, rendered as a table. A placeholder would only prove
+   * that the click did something.
+   */
+  archive.file("reports/quarter.xlsx", readFileSync(at("report.xlsx")));
   // Stored rather than deflated, which is a different read path entirely.
   archive.file("stored.txt", "kept as-is, not compressed\n", {
     compression: "STORE",

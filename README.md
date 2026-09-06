@@ -231,11 +231,15 @@ the inflating, so there is no new dependency; "deflate-raw" rather than
 Everything downstream is the registry's: a CSV inside an archive opens as the
 same table a dropped CSV does, under the same size cap for its format.
 
-**A server-parsed entry is deliberately refused, and says why.** Opening one
-would mean uploading bytes that arrived inside another file — a file the person
-chose to look *into*, not to send. The site's rule for a dropped `.xlsx` is
-that it goes to the server; extending that rule through a container is a
-decision rather than a detail, so it is not taken by default.
+That includes the server-parsed ones: a `.xlsx` inside an archive is extracted
+in the browser and then uploaded, exactly as the same file would be if it had
+been dropped on the page. This was refused at first, on the reasoning that
+bytes arriving inside another file were not offered for sending — but the
+container is not what is being chosen. Clicking `quarter.xlsx` in an archive
+and dropping `quarter.xlsx` are the same request, and answering them
+differently would make the rule depend on where a file happened to be rather
+than on what it is. The pane says "converted on server" for that file, as it
+does for any other, so where it was parsed is still on screen.
 
 Office formats are zips too, and they keep opening as themselves: detection is
 by extension, so only a file actually named `.zip` is listed.

@@ -93,11 +93,21 @@ branch's own commits stay reachable in the history.
 
 ## The deployment checks itself after every release
 
-`Verify deployment` runs an Office upload against production whenever the
-platform reports a successful deployment of `main`. It exists because of a
-release where **no Office file could be opened at all** — the suite green, the
-platform answering 200, and nobody the wiser until someone pushed a real file
-at the real deployment by hand.
+`Verify deployment` opens real files against production whenever the platform
+reports a successful production deployment: an Excel file dropped on the page,
+a locked one, and a spreadsheet opened from inside a zip. It exists because of
+a release where **no Office file could be opened at all** — the suite green,
+the platform answering 200, and nobody the wiser until someone pushed a real
+file at the real deployment by hand.
+
+The run always starts and its first step prints what it was handed — event,
+state, environment, URL — and then says whether it is checking. That is not
+decoration. The first version decided in a job-level `if` keyed on the
+deployment's ref being `main`, which never matched, because the platform
+creates deployments against a commit; the check reported "skipped" after every
+release and was indistinguishable at a glance from one that had passed. A
+condition that is quietly always false still produces a green tick, so this
+one has to say so out loud.
 
 That failure could not have been caught locally. The parsers live in a child
 process spawned by path, so the bundler never reads it, and the deployment

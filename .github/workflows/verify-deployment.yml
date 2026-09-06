@@ -68,48 +68,97 @@ jobs:
   # of doing so on an instance that was not already warm. One real upload
   # answers all three.
   office-upload:
-    # A production deployment that succeeded, or a hand-run. Vercel also
-    # deploys every pull request, and checking a preview build teaches nothing
-    # about the thing users are on — so the branch is what qualifies it, rather
-    # than an environment name that is the platform's to rename.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.deployment_status.state == 'success' &&
-       github.event.deployment.ref == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
+      # Deliberately a step rather than a job-level `if`.
+      #
+      # It was a job-level `if` first, keyed on `deployment.ref == 'main'`, and
+      # that condition never once matched: Vercel creates its deployments
+      # against a commit rather than a branch name, so the check reported
+      # "skipped" after every release for a week and looked exactly like a
+      # check that had passed. A condition that is silently always false is
+      # worse than no condition, because it also produces a green tick.
+      #
+      # So the decision is made in the open. Every deployment event now starts
+      # this job, and the first thing it does is print what it was handed and
+      # say whether that qualifies. The cost is a few seconds of runner time
+      # per event — Vercel sends several per deployment, previews included —
+      # and what it buys is that "not checked" can never again be mistaken for
+      # "checked and fine".
+      - name: Say what this event is, and whether it qualifies
+        id: qualify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          STATE: ${{ github.event.deployment_status.state }}
+          ENVIRONMENT: ${{ github.event.deployment_status.environment }}
+          DEPLOYMENT_REF: ${{ github.event.deployment.ref }}
+          ENVIRONMENT_URL: ${{ github.event.deployment_status.environment_url }}
+        run: |
+          {
+            echo "event:       ${EVENT_NAME}"
+            echo "state:       ${STATE:-(none)}"
+            echo "environment: ${ENVIRONMENT:-(none)}"
+            echo "ref:         ${DEPLOYMENT_REF:-(none)}"
+            echo "url:         ${ENVIRONMENT_URL:-(none)}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+          qualifies=false
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            qualifies=true
+          elif [ "$STATE" = "success" ]; then
+            # The environment is what separates the thing users are on from
+            # the preview built for every pull request. Matched on a prefix
+            # and without case, because it is the platform's string to write.
+            case "$(printf '%s' "$ENVIRONMENT" | tr '[:upper:]' '[:lower:]')" in
+              production*) qualifies=true ;;
+            esac
+          fi
+
+          echo "checking:    ${qualifies}" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "qualifies=${qualifies}" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
+        if: steps.qualify.outputs.qualifies == 'true'
 
       - uses: actions/setup-node@v4
+        if: steps.qualify.outputs.qualifies == 'true'
         with:
           node-version: 22
           cache: npm
 
       - run: npm ci
+        if: steps.qualify.outputs.qualifies == 'true'
 
       - name: Resolve the Playwright version
         id: playwright-version
+        if: steps.qualify.outputs.qualifies == 'true'
         run: |
           echo "value=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Restore the browser
         id: browser-cache
+        if: steps.qualify.outputs.qualifies == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.value }}
 
       - name: Install Chromium
-        if: steps.browser-cache.outputs.cache-hit != 'true'
+        if: >-
+          steps.qualify.outputs.qualifies == 'true' &&
+          steps.browser-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
 
       - name: Install Chromium system dependencies
-        if: steps.browser-cache.outputs.cache-hit == 'true'
+        if: >-
+          steps.qualify.outputs.qualifies == 'true' &&
+          steps.browser-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
-      - name: Upload an Excel file to the deployment
+      - name: Open real files on the deployment
+        if: steps.qualify.outputs.qualifies == 'true'
         env:
           # The URL the platform reports for the deployment it just finished,
           # so the check reads the build it was woken for rather than whatever

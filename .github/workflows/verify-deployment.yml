@@ -51,8 +51,20 @@ permissions:
 # refusals as their own. They queue rather than cancel: cancelling mid-burst
 # leaves the window full, so the run that replaced it would start against a
 # counter it did not fill.
+#
+# Only runs that will actually send traffic belong in that queue, and the
+# distinction is not cosmetic. When every deployment event started entering one
+# group, three Dependabot pull requests deploying at once queued behind the
+# production check and evicted it — GitHub keeps a single pending run per
+# group, so the newest arrival cancels the one waiting. The release that was
+# meant to be verified was cancelled by a preview build of a version bump.
+#
+# So the group is keyed on whether this run will POST at production at all.
+# Everything that will — a hand-run, or a successful production deployment —
+# shares `-live` and waits its turn. Everything else takes a group of its own,
+# where it runs immediately, prints what it saw, and evicts nothing.
 concurrency:
-  group: verify-deployment
+  group: verify-deployment-${{ (github.event_name == 'workflow_dispatch' || startsWith(github.event.deployment_status.environment, 'Production')) && 'live' || github.run_id }}
   cancel-in-progress: false
 
 # The two jobs below both POST at the same origin, and one shared rule counts

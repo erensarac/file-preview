@@ -101,7 +101,10 @@ the platform answering 200, and nobody the wiser until someone pushed a real
 file at the real deployment by hand.
 
 The run always starts and its first step prints what it was handed — event,
-state, environment, URL — and then says whether it is checking. That is not
+state, environment, URL — and then says whether it is checking. Only the runs
+that will actually send traffic queue against each other; a preview build has
+its own lane, because three of them arriving at once once evicted the
+production check from the queue and cancelled it. That is not
 decoration. The first version decided in a job-level `if` keyed on the
 deployment's ref being `main`, which never matched, because the platform
 creates deployments against a commit; the check reported "skipped" after every

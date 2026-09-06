@@ -19,7 +19,7 @@ if (!baseURL) {
 
 export default defineConfig({
   testDir: "./tests-deployment",
-  globalSetup: "./tests/global-setup.ts",
+  globalSetup: "./tests-deployment/global-setup.ts",
   // One at a time. These send real uploads at a real deployment behind a
   // rate-limit rule; parallel workers would measure the queue rather than the
   // work, and could trip the limit that another check exists to verify.

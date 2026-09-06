@@ -119,7 +119,7 @@ jobs:
           echo "checking:    ${qualifies}" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "qualifies=${qualifies}" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.qualify.outputs.qualifies == 'true'
 
       - uses: actions/setup-node@v4
@@ -193,7 +193,7 @@ jobs:
       - name: Let the rate-limit window lapse
         run: sleep 70
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Rate limits
         # Through the environment rather than interpolated into the script.

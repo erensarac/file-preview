@@ -193,7 +193,7 @@ jobs:
 
       # The page's own state at the moment it failed. Without this the log says
       # an element was not found and nothing about what was there instead.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: deployment-failure

@@ -134,7 +134,7 @@ jobs:
       - uses: actions/checkout@v4
         if: steps.qualify.outputs.qualifies == 'true'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         if: steps.qualify.outputs.qualifies == 'true'
         with:
           node-version: 22

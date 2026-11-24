@@ -1,5 +1,7 @@
 import { ImageResponse } from "next/og";
 
+import { MARK } from "@/lib/mark";
+
 /**
  * The home-screen icon.
  *
@@ -23,12 +25,12 @@ export default function AppleIcon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#b4531f",
+          background: MARK.accent,
         }}
       >
         <svg width="112" height="112" viewBox="0 0 32 32">
-          <path d="M8 4h11.2L26 10.8V28H8z" fill="#ffffff" />
-          <path d="M19 4v7h7z" fill="#f0c4a8" />
+          <path d="M8 4h11.2L26 10.8V28H8z" fill={MARK.page} />
+          <path d="M19 4v7h7z" fill={MARK.fold} />
         </svg>
       </div>
     ),

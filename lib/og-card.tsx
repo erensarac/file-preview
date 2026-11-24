@@ -15,12 +15,14 @@
  * committing a font file and fetching it at render time, which is a lot of
  * weight for a link preview.
  */
+import { MARK } from "./mark";
+
 export const OG_SIZE = { width: 1200, height: 630 };
 
 const CANVAS = "#fbfbfa";
 const INK = "#1c1b19";
 const MUTED = "#6f6b65";
-const ACCENT = "#b4531f";
+const ACCENT = MARK.accent;
 
 export function OgCard({ headline, note }: { headline: string; note: string }) {
   return (
@@ -39,8 +41,8 @@ export function OgCard({ headline, note }: { headline: string; note: string }) {
       <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
         <svg width="52" height="52" viewBox="0 0 32 32">
           <rect width="32" height="32" rx="7" fill={ACCENT} />
-          <path d="M11 7h7.2L23 11.8V25H11z" fill="#ffffff" />
-          <path d="M18 7v5h5z" fill="#f0c4a8" />
+          <path d="M11 7h7.2L23 11.8V25H11z" fill={MARK.page} />
+          <path d="M18 7v5h5z" fill={MARK.fold} />
         </svg>
         <div style={{ display: "flex", fontSize: 40, color: INK }}>file</div>
       </div>

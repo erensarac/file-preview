@@ -26,6 +26,20 @@ import { MARK } from "../lib/mark";
 const SIZE = { width: 1280, height: 640 };
 const MARK_HEIGHT = 94 * 1.85;
 
+/**
+ * What "File Preview" measures in the face it is supposed to be set in.
+ *
+ * Taken by rendering the committed font file at the point size the route uses:
+ * 726px of ink, 97 tall — the 97 being the ascender of `l` reaching three
+ * pixels past the caps, since the phrase has no descender to balance it.
+ *
+ * This is the assertion that the font actually loaded. Every other fact about
+ * this layout is just as true of satori's built-in face, which stands in
+ * silently when a font file is missing and would leave a banner correct in
+ * every respect except the one that was chosen.
+ */
+const WORDMARK = { width: 726, height: 97 };
+
 interface Box {
   left: number;
   right: number;
@@ -192,6 +206,32 @@ test.describe("the GitHub banner", () => {
      */
     const wordMiddle = (shape.wordmark.top + shape.wordmark.bottom) / 2;
     expect(Math.abs(wordMiddle - markMiddle)).toBeLessThanOrEqual(10);
+
+    // Set in Newsreader, not in whatever satori falls back to.
+    const wordWidth = shape.wordmark.right - shape.wordmark.left + 1;
+    const wordHeight = shape.wordmark.bottom - shape.wordmark.top + 1;
+    expect(Math.abs(wordWidth - WORDMARK.width)).toBeLessThanOrEqual(20);
+    expect(Math.abs(wordHeight - WORDMARK.height)).toBeLessThanOrEqual(6);
+
+    /*
+     * Printed, not only asserted.
+     *
+     * The bounds above say whether the picture is wrong; these numbers say
+     * what it is. Anyone who cannot open the artifact — a review from a
+     * machine with no browser, or from a container whose network cannot reach
+     * the artifact store — can still read the layout out of the log.
+     */
+    console.log(
+      [
+        `  canvas    ${shape.width}x${shape.height}`,
+        `  mark      ${shape.mark.right - shape.mark.left + 1}x${markHeight}` +
+          ` at (${shape.mark.left}, ${shape.mark.top})  middle ${markMiddle}`,
+        `  wordmark  ${wordWidth}x${wordHeight}` +
+          ` at (${shape.wordmark.left}, ${shape.wordmark.top})  middle ${wordMiddle}`,
+        `  gap       ${shape.gap}`,
+        `  margins   left ${shape.content.left}  right ${SIZE.width - 1 - shape.content.right}`,
+      ].join("\n"),
+    );
   });
 
   /**

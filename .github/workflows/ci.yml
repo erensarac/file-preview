@@ -91,8 +91,16 @@ jobs:
       # `--with-deps` also installs system libraries, and those live outside the
       # cached directory — so a cache hit still needs them, or the browser fails
       # to start on a runner that lacks one.
+      #
+      # Bounded, because this is apt and apt can wait forever. It did: two runs
+      # in a row sat on this step for twenty-five minutes each, outliving the
+      # job's own fifteen-minute limit and surviving a cancellation, because a
+      # job timeout cannot kill what is blocked on a package lock. Five minutes
+      # is far more than the step needs when the runner is healthy, and when it
+      # is not, this fails while there is still budget left to say so.
       - name: Install Chromium system dependencies
         if: steps.browser-cache.outputs.cache-hit == 'true'
+        timeout-minutes: 5
         run: npx playwright install-deps chromium
 
       # Covers the accessibility audit too — axe runs as part of the suite.

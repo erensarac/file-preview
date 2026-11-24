@@ -435,6 +435,39 @@ a double-clicked spreadsheet can open here. The accept map is derived from
 it with the OS by the same one-line change. It is Chromium-only and only once
 installed; nothing depends on it.
 
+## The mark
+
+Three colours and one shape, in `lib/mark.tsx`. Every image the project shows
+is drawn from it rather than exported from a design tool: the touch icon, the
+two PWA icons, the six Open Graph cards and the GitHub banner. None of them is
+a committed PNG, so a change to the mark reaches all of them at once instead of
+reaching whichever four someone remembers.
+
+Two copies of the accent cannot import it — `app/icon.svg` is a static file and
+`app/globals.css` is a stylesheet — so they are covered the other way round:
+`tests/banner.spec.ts` reads both and fails if either has drifted from the
+module.
+
+**The GitHub banner** is at `/github-banner.png`, rendered at build time from
+the same mark. GitHub does not fetch it; a social preview has to be uploaded by
+hand under Settings → General → Social preview, which is why it is served at a
+URL ending in `.png` and why CI publishes it as an artifact on every run — the
+current one is a download away without building anything.
+
+It is the one image with type in it, so it is the one image that needs a font
+file: satori's built-in face ships a single weight, and the wordmark is set in
+Newsreader SemiBold. The file is `lib/fonts/Newsreader-SemiBold.ttf`, under the
+SIL Open Font License, with the licence beside it. Its cap height is measured
+from the ink of a rendered `F` rather than taken from the font's own
+`sCapHeight`, which for this face says 0.67 em and disagrees with what it
+draws.
+
+The banner is checked as a picture, not as a status code: the spec reads the
+PNG back, decodes it in the browser and measures the layout — that the field is
+the accent edge to edge, that the fold is present, that the lockup is centred
+both ways, and that a gap separates the mark from the wordmark. An
+`ImageResponse` returning the wrong thing is still a 200.
+
 ## Accessibility
 
 Every viewer is audited with axe against WCAG A and AA, in both colour schemes,
@@ -687,3 +720,7 @@ format costs, and which constraints on the format registry the build enforces.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+One bundled file is under a different licence: `lib/fonts/Newsreader-SemiBold.ttf`
+is Newsreader, under the SIL Open Font License 1.1 — see
+[`lib/fonts/Newsreader-OFL.txt`](lib/fonts/Newsreader-OFL.txt).

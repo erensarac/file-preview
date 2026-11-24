@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 
 import { FORMATS } from "@/lib/formats";
+import { MARK } from "@/lib/mark";
 
 /**
  * The web app manifest.
@@ -46,7 +47,7 @@ export default function manifest(): MetadataRoute.Manifest {
     // Matches the light palette in `app/globals.css`. The browser paints this
     // behind the app before the first frame, so a mismatch shows as a flash.
     background_color: "#fbfbfa",
-    theme_color: "#b4531f",
+    theme_color: MARK.accent,
     /*
      * The same two images, declared for both purposes rather than as one
      * space-separated `purpose` — which the manifest spec allows but Next's

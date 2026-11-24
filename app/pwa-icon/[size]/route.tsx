@@ -1,5 +1,7 @@
 import { ImageResponse } from "next/og";
 
+import { MARK } from "@/lib/mark";
+
 /**
  * The installed app's icon, at the sizes an installer asks for.
  *
@@ -37,12 +39,12 @@ export async function GET(
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#b4531f",
+          background: MARK.accent,
         }}
       >
         <svg width={glyph} height={glyph} viewBox="0 0 32 32">
-          <path d="M8 4h11.2L26 10.8V28H8z" fill="#ffffff" />
-          <path d="M19 4v7h7z" fill="#f0c4a8" />
+          <path d="M8 4h11.2L26 10.8V28H8z" fill={MARK.page} />
+          <path d="M19 4v7h7z" fill={MARK.fold} />
         </svg>
       </div>
     ),

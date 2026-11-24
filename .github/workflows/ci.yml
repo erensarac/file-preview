@@ -105,3 +105,15 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+      # The social preview has to be uploaded to GitHub by hand — the platform
+      # does not fetch it — so the banner spec writes the rendered image out
+      # and this publishes it. Grabbing the current one is then a download from
+      # the latest run rather than a local build.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: github-banner
+          path: test-results/github-banner.png
+          if-no-files-found: ignore
+          retention-days: 30
